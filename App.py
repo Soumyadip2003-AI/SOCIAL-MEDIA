@@ -904,7 +904,7 @@ def main():
 
 def app_help():
     """Help function that can be called from the main page"""
-    return """
+    st.markdown("""
     ## How to Use This Tool
     
     1. **Enter text** from a social media post
@@ -914,7 +914,7 @@ def app_help():
     5. **Adjust the confidence threshold** in sidebar if needed
     
     For batch processing, use the "Batch Processing" tab.
-    """
+    """)
 
 if __name__ == "__main__":
     main()
