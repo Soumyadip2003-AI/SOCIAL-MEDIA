@@ -906,7 +906,7 @@ def main():
         # Add contact and citation information
         st.subheader("Contact & Citation")
         st.markdown("""
-        **Contact**: For technical support or questions, contact us at soumyadip.0202@gamil.com or visit our [GitHub repository](https://github.com/soumyadip0202/Multimodal-Crisis-Detection-Tool).
+        **Contact**: For technical support or questions, contact us at soumyadip.0202@gamil.com or visit our [GitHub repository](https://github.com/Soumyadip2003-AI/SOCIAL-MEDIA.git).
         
         
         """)
