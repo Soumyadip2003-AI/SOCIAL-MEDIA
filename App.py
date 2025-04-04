@@ -902,19 +902,24 @@ def main():
         
        
 
-def app_help():
-    """Help function that can be called from the main page"""
-    return """
-    ## How to Use This Tool
+# Alternative approach: Add help as a collapsible section in the main UI
+
+def main():
+    # Existing code remains the same
     
-    1. **Enter text** from a social media post
-    2. **Upload an image** (optional)
-    3. **Click "Analyze Content"** to process
-    4. **Review the results** with explanations
-    5. **Adjust the confidence threshold** in sidebar if needed
+    # Add this after the title and introduction
+    with st.expander("How to Use This Tool", expanded=False):
+        st.markdown("""
+        1. **Enter text** from a social media post
+        2. **Upload an image** (optional)
+        3. **Click "Analyze Content"** to process
+        4. **Review the results** with explanations
+        5. **Adjust the confidence threshold** in sidebar if needed
+        
+        For batch processing, use the "Batch Processing" tab.
+        """)
     
-    For batch processing, use the "Batch Processing" tab.
-    """
+    # Rest of the existing code
 
 if __name__ == "__main__":
     main()
