@@ -895,30 +895,12 @@ def main():
         # Add contact and citation information
         st.subheader("Contact & Citation")
         st.markdown("""
-        **Contact**: For technical support or questions, contact support@mentalhealth-ai.org
+        **Contact**: For technical support or questions, contact us at soumyadip.0202@gamil.com or visit our [GitHub repository](https://github.com/soumyadip0202/Multimodal-Crisis-Detection-Tool).
         
-        **Citation**: If using this tool for research, please cite:
-
-        ```
-        Smith, J., Johnson, P., et al. (2024). "Explainable Multimodal Deep Learning for 
-        Mental Health Crisis Detection from Social Media." Journal of AI in Mental Health, 15(2), 112-128.
-        ```
         
-        **License**: This software is released under the Apache 2.0 License
         """)
         
-        # Add acknowledgments
-        st.subheader("Acknowledgments")
-        st.markdown("""
-        This tool was developed with support from:
-        
-        - National Institute of Mental Health (Grant #MH123456)
-        - University Mental Health Research Consortium
-        - Open AI and Mental Health Initiative
-        
-        We thank the clinical advisors and individuals with lived experience who provided 
-        invaluable guidance during the development and validation process.
-        """)
+       
 
 def app_help():
     """Help function that can be called from the main page"""
