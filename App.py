@@ -20,7 +20,7 @@ from lime.lime_text import LimeTextExplainer
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Download necessary NLTK resources
+
 try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
@@ -30,7 +30,7 @@ try:
 except LookupError:
     nltk.download('stopwords')
 
-# Constants
+
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 MAX_LENGTH = 128
 IMG_SIZE = 224
@@ -40,13 +40,13 @@ CRISIS_CATEGORIES = [
 ]
 RISK_LEVELS = ["Low", "Medium", "High", "Critical"]
 
-# Helper functions for text processing
+
 def preprocess_text(text):
-    text = re.sub(r'http\S+', '', text)  # Remove URLs
-    text = re.sub(r'@\w+', '', text)  # Remove mentions
-    text = re.sub(r'#\w+', '', text)  # Remove hashtags
-    text = re.sub(r'[^\w\s]', '', text)  # Remove punctuation
-    text = text.lower()  # Convert to lowercase
+    text = re.sub(r'http\S+', '', text)  
+    text = re.sub(r'@\w+', '', text)  
+    text = re.sub(r'#\w+', '', text)  
+    text = re.sub(r'[^\w\s]', '', text)  
+    text = text.lower()  
     return text
 
 def get_text_features(text, tokenizer, model):
@@ -61,12 +61,12 @@ def get_text_features(text, tokenizer, model):
     with torch.no_grad():
         outputs = model(**inputs)
     
-    # Get [CLS] token embedding as text features - detach before converting to numpy
+    
     return outputs.last_hidden_state[:, 0, :].detach().cpu().numpy()
 
 def get_image_features(image, processor, model):
     if image is None:
-        # Return zero vector if no image
+        
         return np.zeros((1, 768))
     
     inputs = processor(image, return_tensors="pt").to(DEVICE)
@@ -74,10 +74,10 @@ def get_image_features(image, processor, model):
     with torch.no_grad():
         outputs = model(**inputs)
     
-    # Get [CLS] token embedding as image features - detach before converting to numpy
+ 
     return outputs.last_hidden_state[:, 0, :].detach().cpu().numpy()
 
-# Dataset and model classes
+
 class SocialMediaDataset(Dataset):
     def __init__(self, texts, images=None, labels=None):
         self.texts = texts
@@ -98,10 +98,10 @@ class SocialMediaDataset(Dataset):
 class MultimodalCrisisDetector(nn.Module):
     def __init__(self, num_classes=len(CRISIS_CATEGORIES)):
         super(MultimodalCrisisDetector, self).__init__()
-        self.text_dim = 768  # BERT base hidden size
-        self.img_dim = 768   # ViT base hidden size
+        self.text_dim = 768  
+        self.img_dim = 768   
         
-        # Fusion layers
+       
         self.fusion = nn.Sequential(
             nn.Linear(self.text_dim + self.img_dim, 512),
             nn.ReLU(),
@@ -111,20 +111,20 @@ class MultimodalCrisisDetector(nn.Module):
             nn.Dropout(0.2)
         )
         
-        # Classification head
+        
         self.classifier = nn.Linear(256, num_classes)
         
-        # Risk level head
+       
         self.risk_level = nn.Linear(256, len(RISK_LEVELS))
         
     def forward(self, text_features, img_features):
-        # Concatenate features
+       
         combined = torch.cat((text_features, img_features), dim=1)
         
-        # Apply fusion layers
+       
         fused = self.fusion(combined)
         
-        # Get predictions
+      
         logits = self.classifier(fused)
         risk_logits = self.risk_level(fused)
         
@@ -225,14 +225,17 @@ def predict_crisis(text, image, tokenizer, text_model, image_processor, image_mo
         probs = torch.softmax(logits, dim=1).detach().cpu().numpy()  
         risk_probs = torch.softmax(risk_logits, dim=1).detach().cpu().numpy()  
     
+    # Apply confidence threshold - if max probability is below threshold, set to "No Crisis"
     max_prob = np.max(probs[0])
     pred_class = np.argmax(probs[0])
     
+    # If the confidence is below threshold, set to "No Crisis" (assuming it's the last category)
     if max_prob < confidence_threshold and CRISIS_CATEGORIES[pred_class] != "No Crisis":
         pred_class = CRISIS_CATEGORIES.index("No Crisis")
     
     risk_level = np.argmax(risk_probs[0])
     
+    # For "No Crisis", automatically set risk level to "Low"
     if CRISIS_CATEGORIES[pred_class] == "No Crisis":
         risk_level = RISK_LEVELS.index("Low")
    
@@ -296,6 +299,7 @@ def main():
         please contact a mental health professional or crisis hotline immediately.
         """)
         
+        # Add help directly in the sidebar
         st.header("Help")
         st.markdown("""
         **How to use this tool:**
@@ -310,6 +314,7 @@ def main():
         """)
         
         st.header("Settings")
+        # Rest of sidebar code
         confidence_threshold = st.slider(
             "Detection Confidence Threshold",
             min_value=0.0,
@@ -318,6 +323,7 @@ def main():
             help="Minimum confidence level required for crisis detection"
         )
         
+        # Add explanation for the threshold
         st.info("""
         **How the threshold works:** 
         
@@ -360,176 +366,193 @@ def main():
         
         if analyze_button and text_input:
             with st.spinner("Analyzing content..."):
-                try:
-                    results = predict_crisis(
-                        text_input, image,
-                        text_tokenizer, text_model,
-                        image_processor, image_model,
-                        crisis_model,
-                        confidence_threshold
-                    )
-                except Exception as e:
-                    st.error(f"Error during prediction: {e}")
-                    results = None
                 
-                if results is not None:
-                    with col2:
-                        st.subheader("Analysis Results")
-                        st.markdown(f"**Confidence Threshold:** {results['confidence_threshold']:.2f}")
-                        if results['threshold_applied']:
-                            st.warning(f"Original prediction '{results['original_prediction']}' was below the confidence threshold ({results['max_confidence']:.2f}) and was changed to 'No Crisis'.")
-                        st.markdown(f"**Detected Issue:** {results['category']} (Confidence: {results['max_confidence']:.2f})")
-                       
-                        risk_color = {
-                            "Low": "green",
-                            "Medium": "orange",
-                            "High": "red",
-                            "Critical": "darkred"
-                        }
-                        st.markdown(
-                            f"**Risk Level:** <span style='color:{risk_color[results['risk_level']]}'>"
-                            f"{results['risk_level']}</span>",
-                            unsafe_allow_html=True
+                # Pass the confidence threshold to the prediction function
+                results = predict_crisis(
+                    text_input, image,
+                    text_tokenizer, text_model,
+                    image_processor, image_model,
+                    crisis_model,
+                    confidence_threshold
+                )
+                
+                
+                with col2:
+                    st.subheader("Analysis Results")
+                    
+                    # Display threshold information
+                    st.markdown(f"**Confidence Threshold:** {results['confidence_threshold']:.2f}")
+                    if results['threshold_applied']:
+                        st.warning(f"Original prediction '{results['original_prediction']}' was below the confidence threshold ({results['max_confidence']:.2f}) and was changed to 'No Crisis'.")
+                    
+                    # Display the detected issue with confidence
+                    st.markdown(f"**Detected Issue:** {results['category']} (Confidence: {results['max_confidence']:.2f})")
+                    
+                   
+                    risk_color = {
+                        "Low": "green",
+                        "Medium": "orange",
+                        "High": "red",
+                        "Critical": "darkred"
+                    }
+                    st.markdown(
+                        f"**Risk Level:** <span style='color:{risk_color[results['risk_level']]}'>"
+                        f"{results['risk_level']}</span>",
+                        unsafe_allow_html=True
+                    )
+                    
+                    
+                    st.markdown("**Confidence Scores:**")
+                    
+                    # Create a list for the bar chart
+                    cat_items = list(results['category_probs'].items())
+                    cat_values = [item[1] for item in cat_items]
+                    cat_names = [item[0] for item in cat_items]
+                    
+                    # Add a threshold line to the chart
+                    fig = px.bar(
+                        x=cat_values,
+                        y=cat_names,
+                        orientation='h',
+                        labels={'x': 'Probability', 'y': 'Category'},
+                        title="Mental Health Issue Detection",
+                        width=300,
+                        height=300
+                    )
+                    
+                    # Add threshold line
+                    fig.add_shape(
+                        type="line",
+                        x0=confidence_threshold,
+                        y0=-0.5,
+                        x1=confidence_threshold,
+                        y1=len(cat_names)-0.5,
+                        line=dict(color="red", width=2, dash="dash"),
+                    )
+                    
+                    # Add threshold annotation
+                    fig.add_annotation(
+                        x=confidence_threshold,
+                        y=len(cat_names)-1,
+                        text="Threshold",
+                        showarrow=True,
+                        arrowhead=1,
+                        ax=20,
+                        ay=-30
+                    )
+                    
+                    fig.update_layout(margin=dict(l=20, r=20, t=30, b=20))
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                
+                st.subheader("Explainable AI Analysis")
+                
+                exp_col1, exp_col2 = st.columns(2)
+                
+                with exp_col1:
+                    st.markdown("**Key Indicators in Text:**")
+                    
+                    
+                    highlighted_text = text_input
+                    for word, importance in results['word_importance'].items():
+                        if importance > 0:
+                            color = "rgba(255, 0, 0, 0.3)"  
+                            color = "rgba(0, 255, 0, 0.2)"  
+                        
+                        
+                        opacity = min(abs(importance) * 5, 1.0)
+                        color = color.replace("0.3", str(opacity))
+                        
+                        pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
+                        highlighted_text = pattern.sub(
+                            f"<span style='background-color: {color};'>{word}</span>",
+                            highlighted_text
                         )
-                        
-                        st.markdown("**Confidence Scores:**")
-                        cat_items = list(results['category_probs'].items())
-                        cat_values = [item[1] for item in cat_items]
-                        cat_names = [item[0] for item in cat_items]
-                        
-                        fig = px.bar(
-                            x=cat_values,
-                            y=cat_names,
-                            orientation='h',
-                            labels={'x': 'Probability', 'y': 'Category'},
-                            title="Mental Health Issue Detection",
-                            width=300,
-                            height=300
-                        )
-                        
-                        fig.add_shape(
-                            type="line",
-                            x0=confidence_threshold,
-                            y0=-0.5,
-                            x1=confidence_threshold,
-                            y1=len(cat_names)-0.5,
-                            line=dict(color="red", width=2, dash="dash"),
-                        )
-                        
-                        fig.add_annotation(
-                            x=confidence_threshold,
-                            y=len(cat_names)-1,
-                            text="Threshold",
-                            showarrow=True,
-                            arrowhead=1,
-                            ax=20,
-                            ay=-30
-                        )
-                        
-                        fig.update_layout(margin=dict(l=20, r=20, t=30, b=20))
-                        st.plotly_chart(fig, use_container_width=True)
                     
-                    st.subheader("Explainable AI Analysis")
+                    st.markdown(f"<div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px;'>{highlighted_text}</div>", unsafe_allow_html=True)
+                
+                with exp_col2:
                     
-                    exp_col1, exp_col2 = st.columns(2)
+                    word_df = pd.DataFrame({
+                        'Word': list(results['word_importance'].keys()),
+                        'Importance': list(results['word_importance'].values())
+                    })
+                    word_df = word_df.sort_values('Importance', ascending=False)
                     
-                    with exp_col1:
-                        st.markdown("**Key Indicators in Text:**")
+                   
+                    fig = px.bar(
+                        word_df,
+                        x='Importance',
+                        y='Word',
+                        orientation='h',
+                        title="Top Contributing Words",
+                        color='Importance',
+                        color_continuous_scale=['green', 'yellow', 'red']
+                    )
+                    fig.update_layout(height=300)
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                
+                st.subheader("Recommendations")
+                
+                if results['category'] != "No Crisis":
+                    st.markdown("""
+                    Based on the analysis, this content shows potential signs of a mental health concern. 
+                    Consider the following actions:
+                    
+                    1. If you're monitoring this content, consider reaching out to the individual
+                    2. Provide resources appropriate to the detected issue
+                    3. For high or critical risk levels, consider immediate intervention
+                    """)
+                    
+                    
+                    st.markdown("### Relevant Resources")
+                    
+                    resources = {
+                        "Depression": [
+                            "National Institute of Mental Health - Depression Information",
+                            "Depression and Bipolar Support Alliance"
+                        ],
+                        "Anxiety": [
+                            "Anxiety and Depression Association of America",
+                            "National Alliance on Mental Illness - Anxiety Disorders"
+                        ],
+                        "Suicidal Ideation": [
+                            "National Suicide Prevention Lifeline: 988 or 1-800-273-8255",
+                            "Crisis Text Line: Text HOME to 741741"
+                        ],
+                        "Self-harm": [
+                            "Self-Injury Foundation",
+                            "S.A.F.E. Alternatives (Self-Abuse Finally Ends)"
+                        ],
+                        "Eating Disorders": [
+                            "National Eating Disorders Association",
+                            "Eating Disorder Hope"
+                        ],
+                        "Substance Abuse": [
+                            "Substance Abuse and Mental Health Services Administration (SAMHSA)",
+                            "National Institute on Drug Abuse"
+                        ]
+                    }
+                    
+                    if results['category'] in resources:
+                        for resource in resources[results['category']]:
+                            st.markdown(f"- {resource}")
+                else:
+                    if results['threshold_applied']:
+                        st.markdown(f"""
+                        **Note:** The system detected potential signs of {results['original_prediction']} but with 
+                        low confidence ({results['max_confidence']:.2f}), below your threshold setting of {results['confidence_threshold']:.2f}.
                         
-                        highlighted_text = text_input
-                        for word, importance in results['word_importance'].items():
-                            if importance > 0:
-                                color = "rgba(255, 0, 0, 0.3)"  
-                                color = "rgba(0, 255, 0, 0.2)"  
-                            
-                            opacity = min(abs(importance) * 5, 1.0)
-                            color = color.replace("0.3", str(opacity))
-                            
-                            pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
-                            highlighted_text = pattern.sub(
-                                f"<span style='background-color: {color};'>{word}</span>",
-                                highlighted_text
-                            )
-                        
-                        st.markdown(f"<div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px;'>{highlighted_text}</div>", unsafe_allow_html=True)
-                    
-                    with exp_col2:
-                        word_df = pd.DataFrame({
-                            'Word': list(results['word_importance'].keys()),
-                            'Importance': list(results['word_importance'].values())
-                        })
-                        word_df = word_df.sort_values('Importance', ascending=False)
-                        
-                        fig = px.bar(
-                            word_df,
-                            x='Importance',
-                            y='Word',
-                            orientation='h',
-                            title="Top Contributing Words",
-                            color='Importance',
-                            color_continuous_scale=['green', 'yellow', 'red']
-                        )
-                        fig.update_layout(height=300)
-                        st.plotly_chart(fig, use_container_width=True)
-                    
-                    st.subheader("Recommendations")
-                    
-                    if results['category'] != "No Crisis":
-                        st.markdown("""
-                        Based on the analysis, this content shows potential signs of a mental health concern. 
-                        Consider the following actions:
-                        
-                        1. If you're monitoring this content, consider reaching out to the individual
-                        2. Provide resources appropriate to the detected issue
-                        3. For high or critical risk levels, consider immediate intervention
+                        Consider lowering the threshold if you want to detect more subtle signs, or examine the 
+                        confidence scores for more information.
                         """)
-                        
-                        st.markdown("### Relevant Resources")
-                        
-                        resources = {
-                            "Depression": [
-                                "National Institute of Mental Health - Depression Information",
-                                "Depression and Bipolar Support Alliance"
-                            ],
-                            "Anxiety": [
-                                "Anxiety and Depression Association of America",
-                                "National Alliance on Mental Illness - Anxiety Disorders"
-                            ],
-                            "Suicidal Ideation": [
-                                "National Suicide Prevention Lifeline: 988 or 1-800-273-8255",
-                                "Crisis Text Line: Text HOME to 741741"
-                            ],
-                            "Self-harm": [
-                                "Self-Injury Foundation",
-                                "S.A.F.E. Alternatives (Self-Abuse Finally Ends)"
-                            ],
-                            "Eating Disorders": [
-                                "National Eating Disorders Association",
-                                "Eating Disorder Hope"
-                            ],
-                            "Substance Abuse": [
-                                "Substance Abuse and Mental Health Services Administration (SAMHSA)",
-                                "National Institute on Drug Abuse"
-                            ]
-                        }
-                        
-                        if results['category'] in resources:
-                            for resource in resources[results['category']]:
-                                st.markdown(f"- {resource}")
                     else:
-                        if results['threshold_applied']:
-                            st.markdown(f"""
-                            **Note:** The system detected potential signs of {results['original_prediction']} but with 
-                            low confidence ({results['max_confidence']:.2f}), below your threshold setting of {results['confidence_threshold']:.2f}.
-                            
-                            Consider lowering the threshold if you want to detect more subtle signs, or examine the 
-                            confidence scores for more information.
-                            """)
-                        else:
-                            st.markdown("""
-                            No significant mental health concerns detected in this content.
-                            """)
+                        st.markdown("""
+                        No significant mental health concerns detected in this content.
+                        """)
     
+   
     with tabs[1]:
         st.header("Batch Processing")
         st.markdown("""
@@ -554,13 +577,17 @@ def main():
                 else:
                     if st.button("Process Batch", type="primary"):
                         with st.spinner("Processing batch data..."):
+                            
+                            # Apply threshold to batch processing as well
                             st.info(f"Processing with confidence threshold: {confidence_threshold}")
                             
-                            # Existing placeholder processing for a sample of the data
+                            # In a real implementation, we would process each row with the threshold
                             sample_df = df.head(5).copy()
                             sample_df['category'] = "Depression"  
                             sample_df['confidence'] = 0.75  
                             sample_df['risk_level'] = "Medium"
+                            
+                            # Simulate threshold application
                             sample_df.loc[sample_df['confidence'] < confidence_threshold, 'category'] = "No Crisis"
                             sample_df.loc[sample_df['category'] == "No Crisis", 'risk_level'] = "Low"
                             
@@ -870,6 +897,7 @@ def main():
            - Specialized models for specific contexts can be developed
         """)
         
+        # Add contact and citation information
         st.subheader("Contact & Citation")
         st.markdown("""
         **Contact**: For technical support or questions, contact us at soumyadip.0202@gamil.com or visit our [GitHub repository](https://github.com/Soumyadip2003-AI/SOCIAL-MEDIA.git).
