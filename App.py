@@ -339,7 +339,7 @@ def main():
             
             
             uploaded_image = st.file_uploader(
-                "Upload an image (optional)",
+                "Upload an image",
                 type=["jpg", "jpeg", "png"]
             )
             
