@@ -273,6 +273,7 @@ def main():
     
     
     with st.sidebar:
+       
         st.header("About")
         st.markdown("""
         This tool uses AI/ML to analyze social media content for indicators of mental health crises. 
@@ -283,12 +284,22 @@ def main():
         please contact a mental health professional or crisis hotline immediately.
         """)
         
-        st.header("Resources")
+        # Add help directly in the sidebar
+        st.header("Help")
         st.markdown("""
-        - Suicide Prevention Lifeline: 9820466726
+        **How to use this tool:**
+        
+        1. Enter text from a social media post
+        2. Upload an image (optional)
+        3. Click "Analyze Content" to process
+        4. Review the results with explanations
+        5. Adjust the confidence threshold below if needed
+        
+        For batch processing, use the "Batch Processing" tab.
         """)
         
         st.header("Settings")
+        # Rest of sidebar code
         confidence_threshold = st.slider(
             "Detection Confidence Threshold",
             min_value=0.0,
