@@ -902,11 +902,9 @@ def main():
         
        
 
-# Replace the current app_help() function and add a help button in the sidebar
-
 def app_help():
-    """Help function that shows usage information"""
-    st.markdown("""
+    """Help function that can be called from the main page"""
+    return """
     ## How to Use This Tool
     
     1. **Enter text** from a social media post
@@ -916,21 +914,7 @@ def app_help():
     5. **Adjust the confidence threshold** in sidebar if needed
     
     For batch processing, use the "Batch Processing" tab.
-    """)
-
-def main():
-    # Existing code remains the same
-    
-    with st.sidebar:
-        st.header("About")
-        # Existing sidebar content
-        
-        # Add a help button that shows the help when clicked
-        if st.button("Show Help"):
-            app_help()
-        
-        st.header("Settings")
-        # Existing settings content
+    """
 
 if __name__ == "__main__":
     main()
