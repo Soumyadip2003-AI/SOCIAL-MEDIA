@@ -902,8 +902,6 @@ def main():
         
        
 
-# Alternative approach: Add help as a collapsible section in the main UI
-
 def main():
     # Existing code remains the same
     
@@ -918,8 +916,6 @@ def main():
         
         For batch processing, use the "Batch Processing" tab.
         """)
-    
-    # Rest of the existing code
 
 if __name__ == "__main__":
     main()
