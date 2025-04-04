@@ -290,7 +290,7 @@ def main():
         **How to use this tool:**
         
         1. Enter text from a social media post
-        2. Upload an image (optional)
+        2. Upload an image.
         3. Click "Analyze Content" to process
         4. Review the results with explanations
         5. Adjust the confidence threshold below if needed
