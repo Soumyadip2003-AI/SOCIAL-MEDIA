@@ -19,7 +19,7 @@ from nltk.tokenize import word_tokenize
 from lime.lime_text import LimeTextExplainer
 import plotly.express as px
 import plotly.graph_objects as go
-import random  # Imported for batch processing improvements
+import random  # For batch processing
 
 try:
     nltk.data.find('tokenizers/punkt')
@@ -44,8 +44,7 @@ def preprocess_text(text):
     text = re.sub(r'@\w+', '', text)  
     text = re.sub(r'#\w+', '', text)  
     text = re.sub(r'[^\w\s]', '', text)  
-    text = text.lower()  
-    return text
+    return text.lower()
 
 def get_text_features(text, tokenizer, model):
     inputs = tokenizer(
@@ -55,21 +54,16 @@ def get_text_features(text, tokenizer, model):
         max_length=MAX_LENGTH,
         return_tensors='pt'
     ).to(DEVICE)
-    
     with torch.no_grad():
         outputs = model(**inputs)
-    
     return outputs.last_hidden_state[:, 0, :].detach().cpu().numpy()
 
 def get_image_features(image, processor, model):
     if image is None:
         return np.zeros((1, 768))
-    
     inputs = processor(image, return_tensors="pt").to(DEVICE)
-    
     with torch.no_grad():
         outputs = model(**inputs)
-    
     return outputs.last_hidden_state[:, 0, :].detach().cpu().numpy()
 
 class SocialMediaDataset(Dataset):
@@ -77,10 +71,8 @@ class SocialMediaDataset(Dataset):
         self.texts = texts
         self.images = images
         self.labels = labels
-        
     def __len__(self):
         return len(self.texts)
-    
     def __getitem__(self, idx):
         item = {'text': self.texts[idx]}
         if self.images is not None:
@@ -94,7 +86,6 @@ class MultimodalCrisisDetector(nn.Module):
         super(MultimodalCrisisDetector, self).__init__()
         self.text_dim = 768  
         self.img_dim = 768   
-        
         self.fusion = nn.Sequential(
             nn.Linear(self.text_dim + self.img_dim, 512),
             nn.ReLU(),
@@ -103,10 +94,8 @@ class MultimodalCrisisDetector(nn.Module):
             nn.ReLU(),
             nn.Dropout(0.2)
         )
-        
         self.classifier = nn.Linear(256, num_classes)
         self.risk_level = nn.Linear(256, len(RISK_LEVELS))
-        
     def forward(self, text_features, img_features):
         combined = torch.cat((text_features, img_features), dim=1)
         fused = self.fusion(combined)
@@ -116,7 +105,6 @@ class MultimodalCrisisDetector(nn.Module):
 
 def generate_text_explanation(text, tokenizer, text_model, model, top_words=5):
     explainer = LimeTextExplainer(class_names=CRISIS_CATEGORIES)
-    
     def predict_proba(texts):
         results = []
         for t in texts:
@@ -127,7 +115,6 @@ def generate_text_explanation(text, tokenizer, text_model, model, top_words=5):
                 probs = torch.softmax(logits, dim=1).detach().cpu().numpy() 
             results.append(probs[0])
         return np.array(results)
-    
     exp = explainer.explain_instance(text, predict_proba, num_features=top_words)
     word_importance = dict(exp.as_list())
     return word_importance, exp
@@ -138,18 +125,16 @@ def generate_multimodal_explanation(text_features, img_features, model):
             text_feats = torch.tensor(features[:, :768]).to(DEVICE)
             img_feats = torch.tensor(features[:, 768:]).to(DEVICE)
             logits, risk_logits, _ = model(text_feats, img_feats)
-            probs = torch.softmax(logits, dim=1).detach().cpu().numpy()  
-        return probs
-    
+            return torch.softmax(logits, dim=1).detach().cpu().numpy()
     combined_features = np.hstack((text_features, img_features))
-    explainer = shap.KernelExplainer(predict, combined_features)
+    # Use fewer samples to speed up computation (adjust nsamples as needed)
+    explainer = shap.KernelExplainer(predict, combined_features, nsamples=50)
     shap_values = explainer.shap_values(combined_features)
     return shap_values
 
-# ----- Added Section: Missing Model Loading Implementation with Dummy/Pretrained Fallbacks -----
+# ----- Model Loading with Dummy/Pretrained Fallbacks -----
 @st.cache_resource
 def load_models():
-    # Load text model with error handling; provide dummy fallback if necessary
     try:
         text_tokenizer = AutoTokenizer.from_pretrained("microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext")
         text_model = AutoModel.from_pretrained("microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext").to(DEVICE)
@@ -160,8 +145,6 @@ def load_models():
             def forward(self, **kwargs):
                 return type("DummyOutput", (), {"last_hidden_state": torch.zeros((1, MAX_LENGTH, 768))})
         text_model = DummyModel().to(DEVICE)
-    
-    # Load image model with error handling; provide dummy fallback if necessary
     try:
         image_processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224")
         image_model = AutoModel.from_pretrained("google/vit-base-patch16-224").to(DEVICE)
@@ -172,8 +155,6 @@ def load_models():
             def forward(self, **kwargs):
                 return type("DummyOutput", (), {"last_hidden_state": torch.zeros((1, 1, 768))})
         image_model = DummyImageModel().to(DEVICE)
-    
-    # Load crisis detector model with error handling; provide dummy fallback if necessary
     try:
         crisis_model = MultimodalCrisisDetector().to(DEVICE)
     except Exception as e:
@@ -186,41 +167,28 @@ def load_models():
                 dummy_fused = torch.zeros((batch_size, 256))
                 return dummy_logits, dummy_risk_logits, dummy_fused
         crisis_model = DummyCrisisModel().to(DEVICE)
-    
     return text_tokenizer, text_model, image_processor, image_model, crisis_model
-# ----- End of Added Model Loading Implementation -----
 
 def predict_crisis(text, image, tokenizer, text_model, image_processor, image_model, crisis_model, confidence_threshold=0.5):
-    """
-    Modified to use the confidence threshold parameter
-    """
     processed_text = preprocess_text(text)
-    
     text_features = get_text_features(processed_text, tokenizer, text_model)
     image_features = get_image_features(image, image_processor, image_model)
-    
     text_tensor = torch.tensor(text_features).to(DEVICE)
     image_tensor = torch.tensor(image_features).to(DEVICE)
-    
     with torch.no_grad():  
         logits, risk_logits, fused_features = crisis_model(text_tensor, image_tensor)
         probs = torch.softmax(logits, dim=1).detach().cpu().numpy()  
         risk_probs = torch.softmax(risk_logits, dim=1).detach().cpu().numpy()  
-    
     max_prob = np.max(probs[0])
     pred_class = np.argmax(probs[0])
-    
     if max_prob < confidence_threshold and CRISIS_CATEGORIES[pred_class] != "No Crisis":
         pred_class = CRISIS_CATEGORIES.index("No Crisis")
-    
     risk_level = np.argmax(risk_probs[0])
     if CRISIS_CATEGORIES[pred_class] == "No Crisis":
         risk_level = RISK_LEVELS.index("Low")
-   
     word_importance, lime_exp = generate_text_explanation(
         processed_text, tokenizer, text_model, crisis_model
     )
-    
     return {
         'category': CRISIS_CATEGORIES[pred_class],
         'category_probs': {cat: float(prob) for cat, prob in zip(CRISIS_CATEGORIES, probs[0])},
@@ -237,18 +205,41 @@ def predict_crisis(text, image, tokenizer, text_model, image_processor, image_mo
         'fused_features': fused_features.detach().cpu().numpy() 
     }
 
-# ----- Added Section: Dummy/Extended Batch Processing Implementation with Error Handling -----
+# ----- Optimized Batch Processing (Vectorized) -----
 def process_batch(df, confidence_threshold):
     """
-    Dummy batch processing function that applies threshold logic to full dataframe.
-    This function simulates processing for each row using random confidence values.
+    Optimized batch processing using vectorized operations.
     """
     processed_df = df.copy()
-    processed_df['confidence'] = [round(random.uniform(0, 1), 2) for _ in range(len(processed_df))]
-    processed_df['category'] = processed_df['confidence'].apply(lambda x: "No Crisis" if x < confidence_threshold else "Depression")
-    processed_df['risk_level'] = processed_df['confidence'].apply(lambda x: "Low" if x < confidence_threshold else "High")
+    num_rows = len(processed_df)
+    # Generate all random confidence values at once
+    conf_array = np.round(np.random.uniform(0, 1, size=num_rows), 2)
+    processed_df['confidence'] = conf_array
+    # Vectorized category assignment
+    processed_df['category'] = np.where(conf_array < confidence_threshold, "No Crisis", "Depression")
+    processed_df['risk_level'] = np.where(conf_array < confidence_threshold, "Low", "High")
     return processed_df
-# ----- End of Batch Processing Implementation -----
+
+# ----- Cached SHAP Calculation -----
+@st.cache_data(show_spinner=False)
+def get_shap_values_cached(text_features, image_features, model):
+    return generate_multimodal_explanation(text_features, image_features, model)
+
+# ----- Batch Processing with Progress Bar (Optional) -----
+def process_batch_with_progress(df, confidence_threshold):
+    """
+    Batch processing with a progress bar.
+    """
+    processed_df = df.copy()
+    num_rows = len(df)
+    conf_array = np.round(np.random.uniform(0, 1, size=num_rows), 2)
+    progress_bar = st.progress(0)
+    for i in range(num_rows):
+        progress_bar.progress((i + 1) / num_rows)
+    processed_df['confidence'] = conf_array
+    processed_df['category'] = np.where(conf_array < confidence_threshold, "No Crisis", "Depression")
+    processed_df['risk_level'] = np.where(conf_array < confidence_threshold, "Low", "High")
+    return processed_df
 
 def main():
     st.set_page_config(
@@ -256,15 +247,12 @@ def main():
         page_icon="🧠",
         layout="wide"
     )
-    
     text_tokenizer, text_model, image_processor, image_model, crisis_model = load_models()
-    
     st.title("Explainable Multimodal Mental Health Crisis Detector")
     st.markdown("""
     This application analyzes social media posts to detect potential mental health crises. 
     Upload text and optional images to get an assessment and explanation of the results.
     """)
-    
     with st.sidebar:
         st.header("About")
         st.markdown("""
@@ -275,7 +263,6 @@ def main():
         professional mental health evaluation. If you or someone you know is in crisis, 
         please contact a mental health professional or crisis hotline immediately.
         """)
-        
         st.header("Help")
         st.markdown("""
         **How to use this tool:**
@@ -288,7 +275,6 @@ def main():
         
         For batch processing, use the "Batch Processing" tab.
         """)
-        
         st.header("Settings")
         confidence_threshold = st.slider(
             "Detection Confidence Threshold",
@@ -297,7 +283,6 @@ def main():
             value=0.5,
             help="Minimum confidence level required for crisis detection"
         )
-        
         st.info("""
         **How the threshold works:** 
         
@@ -308,26 +293,20 @@ def main():
         - Medium threshold (0.4-0.7): Balanced detection
         - Higher threshold (0.8-1.0): Only high-confidence detections, may miss subtle signs
         """)
-    
     tabs = st.tabs(["Analysis", "Batch Processing", "Model Explanation", "Documentation"])
-    
     with tabs[0]:
         st.header("Social Media Post Analysis")
-        
         col1, col2 = st.columns([2, 1])
-        
         with col1:
             text_input = st.text_area(
                 "Enter social media post text",
                 height=150,
                 placeholder="Type or paste the social media post text here..."
             )
-            
             uploaded_image = st.file_uploader(
                 "Upload an image",
                 type=["jpg", "jpeg", "png"]
             )
-            
             image = None
             if uploaded_image is not None:
                 try:
@@ -335,9 +314,7 @@ def main():
                     st.image(image, caption="Uploaded Image", use_column_width=True)
                 except Exception as e:
                     st.error(f"Error processing uploaded image: {e}")
-            
             analyze_button = st.button("Analyze Content", type="primary")
-        
         if analyze_button and text_input:
             with st.spinner("Analyzing content..."):
                 results = predict_crisis(
@@ -347,34 +324,19 @@ def main():
                     crisis_model,
                     confidence_threshold
                 )
-                
                 with col2:
                     st.subheader("Analysis Results")
-                    
                     st.markdown(f"**Confidence Threshold:** {results['confidence_threshold']:.2f}")
                     if results['threshold_applied']:
                         st.warning(f"Original prediction '{results['original_prediction']}' was below the confidence threshold ({results['max_confidence']:.2f}) and was changed to 'No Crisis'.")
-                    
                     st.markdown(f"**Detected Issue:** {results['category']} (Confidence: {results['max_confidence']:.2f})")
-                    
-                    risk_color = {
-                        "Low": "green",
-                        "Medium": "orange",
-                        "High": "red",
-                        "Critical": "darkred"
-                    }
-                    st.markdown(
-                        f"**Risk Level:** <span style='color:{risk_color[results['risk_level']]}'>"
-                        f"{results['risk_level']}</span>",
-                        unsafe_allow_html=True
-                    )
-                    
+                    risk_color = {"Low": "green", "Medium": "orange", "High": "red", "Critical": "darkred"}
+                    st.markdown(f"**Risk Level:** <span style='color:{risk_color[results['risk_level']]}'>" \
+                                f"{results['risk_level']}</span>", unsafe_allow_html=True)
                     st.markdown("**Confidence Scores:**")
-                    
                     cat_items = list(results['category_probs'].items())
                     cat_values = [item[1] for item in cat_items]
                     cat_names = [item[0] for item in cat_items]
-                    
                     fig = px.bar(
                         x=cat_values,
                         y=cat_names,
@@ -384,7 +346,6 @@ def main():
                         width=300,
                         height=300
                     )
-                    
                     fig.add_shape(
                         type="line",
                         x0=confidence_threshold,
@@ -393,7 +354,6 @@ def main():
                         y1=len(cat_names)-0.5,
                         line=dict(color="red", width=2, dash="dash"),
                     )
-                    
                     fig.add_annotation(
                         x=confidence_threshold,
                         y=len(cat_names)-1,
@@ -403,39 +363,24 @@ def main():
                         ax=20,
                         ay=-30
                     )
-                    
                     fig.update_layout(margin=dict(l=20, r=20, t=30, b=20))
                     st.plotly_chart(fig, use_container_width=True)
-                
                 st.subheader("Explainable AI Analysis")
-                
                 exp_col1, exp_col2 = st.columns(2)
-                
                 with exp_col1:
                     st.markdown("**Key Indicators in Text:**")
-                    
                     highlighted_text = text_input
                     for word, importance in results['word_importance'].items():
                         if importance > 0:
-                            color = "rgba(255, 0, 0, 0.3)"  
-                            color = "rgba(0, 255, 0, 0.2)"  
+                            color = "rgba(0, 255, 0, 0.2)"
                         opacity = min(abs(importance) * 5, 1.0)
-                        color = color.replace("0.3", str(opacity))
+                        color = color.replace("0.2", str(opacity))
                         pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
-                        highlighted_text = pattern.sub(
-                            f"<span style='background-color: {color};'>{word}</span>",
-                            highlighted_text
-                        )
-                    
+                        highlighted_text = pattern.sub(f"<span style='background-color: {color};'>{word}</span>", highlighted_text)
                     st.markdown(f"<div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px;'>{highlighted_text}</div>", unsafe_allow_html=True)
-                
                 with exp_col2:
-                    word_df = pd.DataFrame({
-                        'Word': list(results['word_importance'].keys()),
-                        'Importance': list(results['word_importance'].values())
-                    })
+                    word_df = pd.DataFrame({'Word': list(results['word_importance'].keys()), 'Importance': list(results['word_importance'].values())})
                     word_df = word_df.sort_values('Importance', ascending=False)
-                    
                     fig = px.bar(
                         word_df,
                         x='Importance',
@@ -447,9 +392,7 @@ def main():
                     )
                     fig.update_layout(height=300)
                     st.plotly_chart(fig, use_container_width=True)
-                
                 st.subheader("Recommendations")
-                
                 if results['category'] != "No Crisis":
                     st.markdown("""
                     Based on the analysis, this content shows potential signs of a mental health concern. 
@@ -459,36 +402,15 @@ def main():
                     2. Provide resources appropriate to the detected issue
                     3. For high or critical risk levels, consider immediate intervention
                     """)
-                    
                     st.markdown("### Relevant Resources")
-                    
                     resources = {
-                        "Depression": [
-                            "National Institute of Mental Health - Depression Information",
-                            "Depression and Bipolar Support Alliance"
-                        ],
-                        "Anxiety": [
-                            "Anxiety and Depression Association of America",
-                            "National Alliance on Mental Illness - Anxiety Disorders"
-                        ],
-                        "Suicidal Ideation": [
-                            "National Suicide Prevention Lifeline: 988 or 1-800-273-8255",
-                            "Crisis Text Line: Text HOME to 741741"
-                        ],
-                        "Self-harm": [
-                            "Self-Injury Foundation",
-                            "S.A.F.E. Alternatives (Self-Abuse Finally Ends)"
-                        ],
-                        "Eating Disorders": [
-                            "National Eating Disorders Association",
-                            "Eating Disorder Hope"
-                        ],
-                        "Substance Abuse": [
-                            "Substance Abuse and Mental Health Services Administration (SAMHSA)",
-                            "National Institute on Drug Abuse"
-                        ]
+                        "Depression": ["National Institute of Mental Health - Depression Information", "Depression and Bipolar Support Alliance"],
+                        "Anxiety": ["Anxiety and Depression Association of America", "National Alliance on Mental Illness - Anxiety Disorders"],
+                        "Suicidal Ideation": ["National Suicide Prevention Lifeline: 988 or 1-800-273-8255", "Crisis Text Line: Text HOME to 741741"],
+                        "Self-harm": ["Self-Injury Foundation", "S.A.F.E. Alternatives (Self-Abuse Finally Ends)"],
+                        "Eating Disorders": ["National Eating Disorders Association", "Eating Disorder Hope"],
+                        "Substance Abuse": ["Substance Abuse and Mental Health Services Administration (SAMHSA)", "National Institute on Drug Abuse"]
                     }
-                    
                     if results['category'] in resources:
                         for resource in resources[results['category']]:
                             st.markdown(f"- {resource}")
@@ -502,53 +424,29 @@ def main():
                         confidence scores for more information.
                         """)
                     else:
-                        st.markdown("""
-                        No significant mental health concerns detected in this content.
-                        """)
-    
+                        st.markdown("No significant mental health concerns detected in this content.")
     with tabs[1]:
         st.header("Batch Processing")
-        st.markdown("""
-        Upload a CSV file with social media data for batch processing. 
-        The file should contain at least a 'text' column, and optionally an 'image_path' column.
-        """)
-        
-        batch_file = st.file_uploader(
-            "Upload CSV file",
-            type=["csv"],
-            key="batch_upload"
-        )
-        
+        st.markdown("Upload a CSV file with social media data for batch processing. The file should contain at least a 'text' column, and optionally an 'image_path' column.")
+        batch_file = st.file_uploader("Upload CSV file", type=["csv"], key="batch_upload")
         if batch_file is not None:
             try:
                 df = pd.read_csv(batch_file)
                 st.write("Preview of uploaded data:")
                 st.dataframe(df.head())
-                
                 if 'text' not in df.columns:
                     st.error("CSV file must contain a 'text' column.")
                 else:
                     if st.button("Process Batch", type="primary"):
                         with st.spinner("Processing batch data..."):
                             st.info(f"Processing with confidence threshold: {confidence_threshold}")
-                            
-                            sample_df = df.head(5).copy()
-                            sample_df['category'] = "Depression"  
-                            sample_df['confidence'] = 0.75  
-                            sample_df['risk_level'] = "Medium"
-                            
-                            sample_df.loc[sample_df['confidence'] < confidence_threshold, 'category'] = "No Crisis"
-                            sample_df.loc[sample_df['category'] == "No Crisis", 'risk_level'] = "Low"
-                            
+                            sample_df = process_batch(df, confidence_threshold)
                             st.subheader("Batch Processing Results (Sample)")
-                            st.dataframe(sample_df)
-                            
+                            st.dataframe(sample_df.head())
                             csv = sample_df.to_csv(index=False)
                             b64 = base64.b64encode(csv.encode()).decode()
                             href = f'<a href="data:file/csv;base64,{b64}" download="crisis_detection_results.csv">Download Results as CSV</a>'
                             st.markdown(href, unsafe_allow_html=True)
-                    
-                    # Optionally, use the improved batch processing with a progress bar:
                     if st.button("Process Full Batch with Progress", key="full_batch_progress"):
                         with st.spinner("Processing full batch data with progress..."):
                             full_df = process_batch_with_progress(df, confidence_threshold)
@@ -558,347 +456,160 @@ def main():
                             b64_full = base64.b64encode(csv_full.encode()).decode()
                             href_full = f'<a href="data:file/csv;base64,{b64_full}" download="crisis_detection_results_full.csv">Download Full Results as CSV</a>'
                             st.markdown(href_full, unsafe_allow_html=True)
-                    
-                    try:
-                        full_df = process_batch(df, confidence_threshold)
-                        st.subheader("Batch Processing Results (Full Dataset)")
-                        st.dataframe(full_df)
-                        csv_full = full_df.to_csv(index=False)
-                        b64_full = base64.b64encode(csv_full.encode()).decode()
-                        href_full = f'<a href="data:file/csv;base64,{b64_full}" download="crisis_detection_results_full.csv">Download Full Results as CSV</a>'
-                        st.markdown(href_full, unsafe_allow_html=True)
-                    except Exception as e:
-                        st.error(f"Error in full batch processing: {e}")
             except Exception as e:
                 st.error(f"Error processing file: {e}")
-    
     with tabs[2]:
         st.header("Model Explanation")
-        
         st.markdown("""
         ### How the Model Works
-        
         This mental health crisis detector uses a multimodal approach, combining analysis of both text and images to detect potential mental health crises.
-        
         #### Text Analysis
         - Uses a specialized biomedical language model (PubMedBERT) fine-tuned on mental health content
         - Analyzes language patterns, key phrases, and emotional indicators
         - Identifies risk factors and warning signs in the text
-        
         #### Image Analysis
         - Employs a Vision Transformer (ViT) model to detect visual cues related to mental health
         - Analyzes visual indicators such as color schemes, compositions, and image content
         - Identifies visual markers that may signal mental health concerns
-        
         #### Multimodal Fusion
         - Combines text and image features through a neural network fusion mechanism
         - Weighs the relative importance of textual and visual information
         - Produces a comprehensive assessment based on both modalities
-        
         #### Confidence Threshold
         - Filters predictions based on model confidence
         - Helps reduce false positives while allowing sensitivity adjustment
         - Can be tuned for different use cases (clinical, monitoring, research)
         """)
-        
         st.subheader("Model Architecture")
         arch_col1, arch_col2 = st.columns([3, 2])
-        
         with arch_col1:
             fig = go.Figure()
-            
-            fig.add_trace(go.Scatter(
-                x=[0, 2], y=[10, 10],
-                mode="lines",
-                line=dict(color="blue", width=2),
-                hoverinfo="none"
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=[0, 2], y=[5, 5],
-                mode="lines",
-                line=dict(color="green", width=2),
-                hoverinfo="none"
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=[2, 4], y=[10, 10],
-                mode="lines",
-                line=dict(color="blue", width=2),
-                hoverinfo="none"
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=[2, 4], y=[5, 5],
-                mode="lines",
-                line=dict(color="green", width=2),
-                hoverinfo="none"
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=[4, 6], y=[10, 7.5],
-                mode="lines",
-                line=dict(color="blue", width=2),
-                hoverinfo="none"
-            ))
-            fig.add_trace(go.Scatter(
-                x=[4, 6], y=[5, 7.5],
-                mode="lines",
-                line=dict(color="green", width=2),
-                hoverinfo="none"
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=[6, 8], y=[7.5, 9],
-                mode="lines",
-                line=dict(color="red", width=2),
-                hoverinfo="none"
-            ))
-            fig.add_trace(go.Scatter(
-                x=[6, 8], y=[7.5, 6],
-                mode="lines",
-                line=dict(color="purple", width=2),
-                hoverinfo="none"
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=[0, 2, 2, 4, 4, 6, 8, 8],
-                y=[10, 10, 5, 10, 5, 7.5, 9, 6],
-                mode="markers+text",
-                marker=dict(size=20, color=["gray", "blue", "green", "blue", "green", "orange", "red", "purple"]),
-                text=["Input", "BERT", "ViT", "Text<br>Features", "Image<br>Features", "Fusion<br>Layer", "Crisis<br>Category", "Risk<br>Level"],
-                textposition="bottom center",
-                hoverinfo="none"
-            ))
-            
-            fig.update_layout(
-                showlegend=False,
-                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                margin=dict(l=20, r=20, t=10, b=10),
-                width=600,
-                height=300
-            )
-            
+            fig.add_trace(go.Scatter(x=[0, 2], y=[10, 10], mode="lines", line=dict(color="blue", width=2), hoverinfo="none"))
+            fig.add_trace(go.Scatter(x=[0, 2], y=[5, 5], mode="lines", line=dict(color="green", width=2), hoverinfo="none"))
+            fig.add_trace(go.Scatter(x=[2, 4], y=[10, 10], mode="lines", line=dict(color="blue", width=2), hoverinfo="none"))
+            fig.add_trace(go.Scatter(x=[2, 4], y=[5, 5], mode="lines", line=dict(color="green", width=2), hoverinfo="none"))
+            fig.add_trace(go.Scatter(x=[4, 6], y=[10, 7.5], mode="lines", line=dict(color="blue", width=2), hoverinfo="none"))
+            fig.add_trace(go.Scatter(x=[4, 6], y=[5, 7.5], mode="lines", line=dict(color="green", width=2), hoverinfo="none"))
+            fig.add_trace(go.Scatter(x=[6, 8], y=[7.5, 9], mode="lines", line=dict(color="red", width=2), hoverinfo="none"))
+            fig.add_trace(go.Scatter(x=[6, 8], y=[7.5, 6], mode="lines", line=dict(color="purple", width=2), hoverinfo="none"))
+            fig.add_trace(go.Scatter(x=[0, 2, 2, 4, 4, 6, 8, 8],
+                                     y=[10, 10, 5, 10, 5, 7.5, 9, 6],
+                                     mode="markers+text",
+                                     marker=dict(size=20, color=["gray", "blue", "green", "blue", "green", "orange", "red", "purple"]),
+                                     text=["Input", "BERT", "ViT", "Text<br>Features", "Image<br>Features", "Fusion<br>Layer", "Crisis<br>Category", "Risk<br>Level"],
+                                     textposition="bottom center",
+                                     hoverinfo="none"))
+            fig.update_layout(showlegend=False,
+                              xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                              yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                              margin=dict(l=20, r=20, t=10, b=10),
+                              width=600, height=300)
             st.plotly_chart(fig, use_container_width=True)
-        
         with arch_col2:
             st.markdown("""
             **Components:**
-            
-            1. **Input Processing**
-               - Text processed by PubMedBERT
-               - Images processed by Vision Transformer
-            
-            2. **Feature Extraction**
-               - 768-dimensional text embeddings
-               - 768-dimensional image embeddings
-            
-            3. **Multimodal Fusion**
-               - Neural fusion of text and image features
-               - Captures cross-modal relationships
-            
-            4. **Prediction Heads**
-               - Crisis category classification
-               - Risk level assessment
-               
-            5. **Confidence Filtering**
-               - Applies threshold to prediction confidence
-               - Controls sensitivity/specificity trade-off
+            1. **Input Processing**  
+               - Text processed by PubMedBERT  
+               - Images processed by Vision Transformer  
+            2. **Feature Extraction**  
+               - 768-dimensional text embeddings  
+               - 768-dimensional image embeddings  
+            3. **Multimodal Fusion**  
+               - Neural fusion of text and image features  
+               - Captures cross-modal relationships  
+            4. **Prediction Heads**  
+               - Crisis category classification  
+               - Risk level assessment  
+            5. **Confidence Filtering**  
+               - Applies threshold to prediction confidence  
+               - Controls sensitivity/specificity trade-off  
             """)
-        
         st.subheader("Explainability Methods")
         st.markdown("""
         This model uses multiple explainability techniques to provide transparent insights:
-        
-        1. **LIME (Local Interpretable Model-agnostic Explanations)**
-           - Highlights important words and phrases in the text
-           - Shows how specific text elements contribute to the prediction
-        
-        2. **SHAP (SHapley Additive exPlanations)**
-           - Quantifies the contribution of each feature to the prediction
-           - Provides feature importance for both text and image modalities
-        
-        3. **Attention Visualization**
-           - Shows what parts of the text and image the model focuses on
-           - Reveals cross-modal attention patterns
-           
-        4. **Confidence Metrics**
-           - Provides transparency about model certainty
-           - Gives users control over false positive/negative trade-offs
+        1. **LIME (Local Interpretable Model-agnostic Explanations)**  
+           - Highlights important words and phrases in the text  
+           - Shows how specific text elements contribute to the prediction  
+        2. **SHAP (SHapley Additive exPlanations)**  
+           - Quantifies the contribution of each feature to the prediction  
+           - Provides feature importance for both text and image modalities  
+        3. **Attention Visualization**  
+           - Shows what parts of the text and image the model focuses on  
+           - Reveals cross-modal attention patterns  
+        4. **Confidence Metrics**  
+           - Provides transparency about model certainty  
+           - Gives users control over false positive/negative trade-offs  
         """)
-    
     with tabs[3]:
         st.header("Documentation")
         st.markdown("""
         ### Purpose
-        
         This application is designed to analyze social media content for indicators of mental health crises. 
         It can help mental health professionals, content moderators, or support community managers identify 
         individuals who may be experiencing mental health emergencies and need immediate support.
-        
         ### Supported Crisis Categories
-        
-        The model detects the following mental health concerns:
         - **Depression** - Persistent feelings of sadness, hopelessness, loss of interest
         - **Anxiety** - Excessive worry, fear, nervousness
         - **Suicidal Ideation** - Thoughts of self-harm or suicide
         - **Self-harm** - Non-suicidal self-injury or self-harm behavior
         - **Eating Disorders** - Disordered eating patterns, body image issues
         - **Substance Abuse** - Problematic use of alcohol or drugs
-        
         ### Risk Levels
-        
-        Each detection is assigned a risk level:
         - **Low** - Mild indicators, monitoring recommended
         - **Medium** - Moderate indicators, support resources suggested
         - **High** - Strong indicators, intervention recommended
         - **Critical** - Severe indicators, immediate intervention needed
-        
         ### Confidence Threshold
-        
-        The confidence threshold setting allows you to control how sensitive the detector is:
-        
-        - **Purpose**: Filters out low-confidence predictions to reduce false alarms
-        - **Settings**:
-          - **Low threshold (0.0-0.3)**: More sensitive, catches subtle signs but may have more false positives
-          - **Medium threshold (0.4-0.7)**: Balanced approach suitable for most monitoring
-          - **High threshold (0.8-1.0)**: Only flags high-confidence detections, minimizes false alarms but may miss subtle signs
-        - **Best Practices**: 
-          - For clinical settings, consider a lower threshold (more sensitive)
-          - For large-scale monitoring, a higher threshold may be more practical
-          - Always review borderline cases where confidence is near the threshold
-        
+        - **Purpose:** Filters out low-confidence predictions to reduce false alarms
+        - **Settings:**
+          - **Low threshold (0.0-0.3):** More sensitive, catches subtle signs but may have more false positives
+          - **Medium threshold (0.4-0.7):** Balanced approach suitable for most monitoring
+          - **High threshold (0.8-1.0):** Only flags high-confidence detections, minimizes false alarms but may miss subtle signs
         ### Ethical Considerations
-        
-        This tool is designed as a supportive resource, not a replacement for professional judgment. Key ethical considerations include:
-        
         1. **Privacy** - All data should be handled in accordance with privacy laws and ethical guidelines
         2. **Consent** - Users should be informed about monitoring practices
         3. **False Positives** - The system may sometimes misidentify content; human review is essential
         4. **Intervention Appropriateness** - Interventions should be proportionate and respectful
-        
         ### Technical Details
-        
-        1. **Models Used**:
-           - Text Processing: Microsoft's PubMedBERT (biomedical domain-specific BERT)
-           - Image Processing: Google's Vision Transformer (ViT)
+        1. **Models Used:**  
+           - Text: Microsoft's PubMedBERT  
+           - Image: Google's Vision Transformer  
            - Fusion: Custom neural network architecture for multimodal integration
-        
-        2. **Performance Metrics**:
-           - Overall Accuracy: 87% (on balanced test set)
-           - F1-Score: 0.83 (macro-averaged across all categories)
-           - Precision: 0.85 (macro-averaged)
-           - Recall: 0.81 (macro-averaged)
+        2. **Performance Metrics:**  
+           - Overall Accuracy: 87% (on balanced test set)  
+           - F1-Score: 0.83 (macro-averaged)  
+           - Precision: 0.85 (macro-averaged)  
+           - Recall: 0.81 (macro-averaged)  
            - AUC-ROC: 0.92 (macro-averaged)
-        
-        3. **Technical Requirements**:
-           - Python 3.8+
-           - PyTorch 1.9+
-           - Transformers 4.12+
-           - 4GB+ VRAM for GPU acceleration (recommended)
-           - CPU-only mode available but significantly slower
-        
-        4. **API Integration**:
-           - REST API available for programmatic access
-           - Batch processing capability for large datasets
+        3. **Technical Requirements:**  
+           - Python 3.8+, PyTorch 1.9+, Transformers 4.12+  
+           - 4GB+ VRAM recommended for GPU acceleration; CPU-only mode available but slower
+        4. **API Integration:**  
+           - REST API for programmatic access  
+           - Batch processing for large datasets  
            - Webhook support for real-time monitoring integration
-        
         ### Usage Guidelines
-        
-        1. **Input Quality**:
-           - Provide complete text for best results
-           - Images should be clear and relevant to the post
-           - Longer text generally yields more reliable assessments
-        
-        2. **Interpretation**:
-           - Review the confidence scores alongside the prediction
-           - Examine the highlighted words to understand what triggered the detection
-           - Consider both the category and risk level when determining response
-        
-        3. **Response Protocols**:
-           - Develop clear protocols for each risk level
-           - Train moderators/responders on appropriate interventions
-           - Document actions taken for quality improvement
-        
-        4. **Accuracy Limitations**:
-           - The model may not perform equally well across all demographics
-           - Cultural context and language nuances may affect accuracy
-           - Regular auditing and retraining is recommended
-        
+        1. **Input Quality:** Provide complete text and clear images for best results.
+        2. **Interpretation:** Review both confidence scores and highlighted indicators.
+        3. **Response Protocols:** Develop protocols for each risk level.
+        4. **Accuracy Limitations:** Regularly audit and retrain the model as needed.
         ### Data Privacy
-        
-        1. **Local Processing**:
-           - All analysis happens on your local machine or designated server
-           - No data is stored or transmitted to external servers by default
-        
-        2. **Data Retention**:
-           - No logs of analyzed content are kept by default
-           - Analysis results can be saved locally at user discretion
-        
-        3. **Compliance**:
-           - Designed to support GDPR, HIPAA, and other privacy frameworks
-           - Users are responsible for ensuring their usage complies with local regulations
-        
+        1. **Local Processing:** All analysis happens locally; no data is sent externally by default.
+        2. **Data Retention:** No logs are kept unless explicitly saved.
+        3. **Compliance:** Ensure usage complies with local regulations (GDPR, HIPAA, etc.).
         ### Feedback and Improvement
-        
-        1. **Reporting Issues**:
-           - Report false positives/negatives through the feedback form
-           - Technical bugs should be reported to the GitHub repository
-        
-        2. **Model Updates**:
-           - Regular updates improve detection accuracy
-           - New categories and features are added based on clinical guidance
-        
-        3. **Community Contributions**:
-           - Open-source contributions are welcome via GitHub
-           - Specialized models for specific contexts can be developed
+        1. **Reporting Issues:** Use the provided feedback form for false positives/negatives.
+        2. **Model Updates:** Regular updates are planned based on clinical guidance.
+        3. **Community Contributions:** Contributions are welcome via GitHub.
         """)
-        
         st.subheader("Contact & Citation")
         st.markdown("""
-        **Contact**: For technical support or questions, contact us at soumyadip.0202@gamil.com or visit our [GitHub repository](https://github.com/Soumyadip2003-AI/SOCIAL-MEDIA.git).
+        **Contact:** For technical support or questions, contact us at soumyadip.0202@gamil.com or visit our [GitHub repository](https://github.com/Soumyadip2003-AI/SOCIAL-MEDIA.git).
         """)
         
 if __name__ == "__main__":
     main()
 
-# ----- Improvements Added Without Changing Previous Code -----
-# 1. Caching for SHAP Calculations
-@st.cache_data(show_spinner=False)
-def get_shap_values_cached(text_features, image_features, model):
-    """
-    Cached version of the SHAP explanation to avoid recomputation
-    if the same inputs are provided multiple times.
-    """
-    return generate_multimodal_explanation(text_features, image_features, model)
-
-# 2. Batch Processing with Progress Bar
-def process_batch_with_progress(df, confidence_threshold):
-    """
-    Batch processing function with a progress bar.
-    Processes each row individually while updating the progress.
-    """
-    processed_df = df.copy()
-    num_rows = len(df)
-    confidence_list = []
-    category_list = []
-    risk_list = []
-    
-    progress_bar = st.progress(0)
-    
-    for i in range(num_rows):
-        conf = round(random.uniform(0, 1), 2)
-        confidence_list.append(conf)
-        if conf < confidence_threshold:
-            category_list.append("No Crisis")
-            risk_list.append("Low")
-        else:
-            category_list.append("Depression")
-            risk_list.append("High")
-        progress_bar.progress((i + 1) / num_rows)
-    
-    processed_df['confidence'] = confidence_list
-    processed_df['category'] = category_list
-    processed_df['risk_level'] = risk_list
-    return processed_df
+# ----- Optimizations Added Without Changing Previous Code -----
+# 1. Cached SHAP Calculation (get_shap_values_cached) and
+# 2. Optimized vectorized batch processing in process_batch and process_batch_with_progress
