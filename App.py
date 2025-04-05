@@ -61,12 +61,10 @@ def get_text_features(text, tokenizer, model):
     with torch.no_grad():
         outputs = model(**inputs)
     
-    
     return outputs.last_hidden_state[:, 0, :].detach().cpu().numpy()
 
 def get_image_features(image, processor, model):
     if image is None:
-        
         return np.zeros((1, 768))
     
     inputs = processor(image, return_tensors="pt").to(DEVICE)
@@ -74,7 +72,6 @@ def get_image_features(image, processor, model):
     with torch.no_grad():
         outputs = model(**inputs)
     
- 
     return outputs.last_hidden_state[:, 0, :].detach().cpu().numpy()
 
 
@@ -101,7 +98,6 @@ class MultimodalCrisisDetector(nn.Module):
         self.text_dim = 768  
         self.img_dim = 768   
         
-       
         self.fusion = nn.Sequential(
             nn.Linear(self.text_dim + self.img_dim, 512),
             nn.ReLU(),
@@ -111,23 +107,14 @@ class MultimodalCrisisDetector(nn.Module):
             nn.Dropout(0.2)
         )
         
-        
         self.classifier = nn.Linear(256, num_classes)
-        
-       
         self.risk_level = nn.Linear(256, len(RISK_LEVELS))
         
     def forward(self, text_features, img_features):
-       
         combined = torch.cat((text_features, img_features), dim=1)
-        
-       
         fused = self.fusion(combined)
-        
-      
         logits = self.classifier(fused)
         risk_logits = self.risk_level(fused)
-        
         return logits, risk_logits, fused
 
 def generate_text_explanation(text, tokenizer, text_model, model, top_words=5):
@@ -171,7 +158,6 @@ def load_models():
         text_model = AutoModel.from_pretrained("microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext").to(DEVICE)
     except Exception as e:
         st.error(f"Error loading text model: {e}")
-        # Dummy fallback: simple tokenizer and a dummy model that returns zeros
         text_tokenizer = lambda x, **kwargs: {"input_ids": torch.zeros((1, MAX_LENGTH), dtype=torch.long)}
         class DummyModel(nn.Module):
             def forward(self, **kwargs):
@@ -184,7 +170,6 @@ def load_models():
         image_model = AutoModel.from_pretrained("google/vit-base-patch16-224").to(DEVICE)
     except Exception as e:
         st.error(f"Error loading image model: {e}")
-        # Dummy fallback: dummy image processor and model that returns zeros
         image_processor = lambda image, **kwargs: {"pixel_values": torch.zeros((1, 3, IMG_SIZE, IMG_SIZE))}
         class DummyImageModel(nn.Module):
             def forward(self, **kwargs):
@@ -225,17 +210,13 @@ def predict_crisis(text, image, tokenizer, text_model, image_processor, image_mo
         probs = torch.softmax(logits, dim=1).detach().cpu().numpy()  
         risk_probs = torch.softmax(risk_logits, dim=1).detach().cpu().numpy()  
     
-    # Apply confidence threshold - if max probability is below threshold, set to "No Crisis"
     max_prob = np.max(probs[0])
     pred_class = np.argmax(probs[0])
     
-    # If the confidence is below threshold, set to "No Crisis" (assuming it's the last category)
     if max_prob < confidence_threshold and CRISIS_CATEGORIES[pred_class] != "No Crisis":
         pred_class = CRISIS_CATEGORIES.index("No Crisis")
     
     risk_level = np.argmax(risk_probs[0])
-    
-    # For "No Crisis", automatically set risk level to "Low"
     if CRISIS_CATEGORIES[pred_class] == "No Crisis":
         risk_level = RISK_LEVELS.index("Low")
    
@@ -299,7 +280,6 @@ def main():
         please contact a mental health professional or crisis hotline immediately.
         """)
         
-        # Add help directly in the sidebar
         st.header("Help")
         st.markdown("""
         **How to use this tool:**
@@ -314,7 +294,6 @@ def main():
         """)
         
         st.header("Settings")
-        # Rest of sidebar code
         confidence_threshold = st.slider(
             "Detection Confidence Threshold",
             min_value=0.0,
@@ -323,7 +302,6 @@ def main():
             help="Minimum confidence level required for crisis detection"
         )
         
-        # Add explanation for the threshold
         st.info("""
         **How the threshold works:** 
         
@@ -366,8 +344,6 @@ def main():
         
         if analyze_button and text_input:
             with st.spinner("Analyzing content..."):
-                
-                # Pass the confidence threshold to the prediction function
                 results = predict_crisis(
                     text_input, image,
                     text_tokenizer, text_model,
@@ -376,19 +352,15 @@ def main():
                     confidence_threshold
                 )
                 
-                
                 with col2:
                     st.subheader("Analysis Results")
                     
-                    # Display threshold information
                     st.markdown(f"**Confidence Threshold:** {results['confidence_threshold']:.2f}")
                     if results['threshold_applied']:
                         st.warning(f"Original prediction '{results['original_prediction']}' was below the confidence threshold ({results['max_confidence']:.2f}) and was changed to 'No Crisis'.")
                     
-                    # Display the detected issue with confidence
                     st.markdown(f"**Detected Issue:** {results['category']} (Confidence: {results['max_confidence']:.2f})")
                     
-                   
                     risk_color = {
                         "Low": "green",
                         "Medium": "orange",
@@ -401,15 +373,12 @@ def main():
                         unsafe_allow_html=True
                     )
                     
-                    
                     st.markdown("**Confidence Scores:**")
                     
-                    # Create a list for the bar chart
                     cat_items = list(results['category_probs'].items())
                     cat_values = [item[1] for item in cat_items]
                     cat_names = [item[0] for item in cat_items]
                     
-                    # Add a threshold line to the chart
                     fig = px.bar(
                         x=cat_values,
                         y=cat_names,
@@ -420,7 +389,6 @@ def main():
                         height=300
                     )
                     
-                    # Add threshold line
                     fig.add_shape(
                         type="line",
                         x0=confidence_threshold,
@@ -430,7 +398,6 @@ def main():
                         line=dict(color="red", width=2, dash="dash"),
                     )
                     
-                    # Add threshold annotation
                     fig.add_annotation(
                         x=confidence_threshold,
                         y=len(cat_names)-1,
@@ -444,7 +411,6 @@ def main():
                     fig.update_layout(margin=dict(l=20, r=20, t=30, b=20))
                     st.plotly_chart(fig, use_container_width=True)
                 
-                
                 st.subheader("Explainable AI Analysis")
                 
                 exp_col1, exp_col2 = st.columns(2)
@@ -452,17 +418,13 @@ def main():
                 with exp_col1:
                     st.markdown("**Key Indicators in Text:**")
                     
-                    
                     highlighted_text = text_input
                     for word, importance in results['word_importance'].items():
                         if importance > 0:
                             color = "rgba(255, 0, 0, 0.3)"  
                             color = "rgba(0, 255, 0, 0.2)"  
-                        
-                        
                         opacity = min(abs(importance) * 5, 1.0)
                         color = color.replace("0.3", str(opacity))
-                        
                         pattern = re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE)
                         highlighted_text = pattern.sub(
                             f"<span style='background-color: {color};'>{word}</span>",
@@ -472,14 +434,12 @@ def main():
                     st.markdown(f"<div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px;'>{highlighted_text}</div>", unsafe_allow_html=True)
                 
                 with exp_col2:
-                    
                     word_df = pd.DataFrame({
                         'Word': list(results['word_importance'].keys()),
                         'Importance': list(results['word_importance'].values())
                     })
                     word_df = word_df.sort_values('Importance', ascending=False)
                     
-                   
                     fig = px.bar(
                         word_df,
                         x='Importance',
@@ -492,7 +452,6 @@ def main():
                     fig.update_layout(height=300)
                     st.plotly_chart(fig, use_container_width=True)
                 
-                
                 st.subheader("Recommendations")
                 
                 if results['category'] != "No Crisis":
@@ -504,7 +463,6 @@ def main():
                     2. Provide resources appropriate to the detected issue
                     3. For high or critical risk levels, consider immediate intervention
                     """)
-                    
                     
                     st.markdown("### Relevant Resources")
                     
@@ -552,7 +510,6 @@ def main():
                         No significant mental health concerns detected in this content.
                         """)
     
-   
     with tabs[1]:
         st.header("Batch Processing")
         st.markdown("""
@@ -577,17 +534,13 @@ def main():
                 else:
                     if st.button("Process Batch", type="primary"):
                         with st.spinner("Processing batch data..."):
-                            
-                            # Apply threshold to batch processing as well
                             st.info(f"Processing with confidence threshold: {confidence_threshold}")
                             
-                            # In a real implementation, we would process each row with the threshold
                             sample_df = df.head(5).copy()
                             sample_df['category'] = "Depression"  
                             sample_df['confidence'] = 0.75  
                             sample_df['risk_level'] = "Medium"
                             
-                            # Simulate threshold application
                             sample_df.loc[sample_df['confidence'] < confidence_threshold, 'category'] = "No Crisis"
                             sample_df.loc[sample_df['category'] == "No Crisis", 'risk_level'] = "Low"
                             
@@ -599,7 +552,6 @@ def main():
                             href = f'<a href="data:file/csv;base64,{b64}" download="crisis_detection_results.csv">Download Results as CSV</a>'
                             st.markdown(href, unsafe_allow_html=True)
                     
-                    # ----- Added Extended Batch Processing Implementation -----
                     try:
                         full_df = process_batch(df, confidence_threshold)
                         st.subheader("Batch Processing Results (Full Dataset)")
@@ -610,7 +562,6 @@ def main():
                         st.markdown(href_full, unsafe_allow_html=True)
                     except Exception as e:
                         st.error(f"Error in full batch processing: {e}")
-                    # ----- End of Extended Batch Processing Implementation -----
             except Exception as e:
                 st.error(f"Error processing file: {e}")
     
@@ -897,7 +848,6 @@ def main():
            - Specialized models for specific contexts can be developed
         """)
         
-        # Add contact and citation information
         st.subheader("Contact & Citation")
         st.markdown("""
         **Contact**: For technical support or questions, contact us at soumyadip.0202@gamil.com or visit our [GitHub repository](https://github.com/Soumyadip2003-AI/SOCIAL-MEDIA.git).
