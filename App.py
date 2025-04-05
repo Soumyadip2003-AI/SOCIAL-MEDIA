@@ -47,6 +47,7 @@ def preprocess_text(text):
     text = re.sub(r'[^\w\s]', '', text)  
     return text.lower()
 
+@st.cache_data(show_spinner=False)
 def get_text_features(text, tokenizer, model):
     inputs = tokenizer(
         text,
@@ -59,6 +60,7 @@ def get_text_features(text, tokenizer, model):
         outputs = model(**inputs)
     return outputs.last_hidden_state[:, 0, :].detach().cpu().numpy()
 
+@st.cache_data(show_spinner=False)
 def get_image_features(image, processor, model):
     if image is None:
         return np.zeros((1, 768))
@@ -116,7 +118,8 @@ def generate_text_explanation(text, tokenizer, text_model, model, top_words=5):
                 probs = torch.softmax(logits, dim=1).detach().cpu().numpy() 
             results.append(probs[0])
         return np.array(results)
-    exp = explainer.explain_instance(text, predict_proba, num_features=top_words)
+    # reduced num_samples for speed
+    exp = explainer.explain_instance(text, predict_proba, num_features=top_words, num_samples=100)
     word_importance = dict(exp.as_list())
     return word_importance, exp
 
@@ -128,12 +131,11 @@ def generate_multimodal_explanation(text_features, img_features, model):
             logits, risk_logits, _ = model(text_feats, img_feats)
             return torch.softmax(logits, dim=1).detach().cpu().numpy()
     combined_features = np.hstack((text_features, img_features))
-    # Use fewer samples to speed up computation (adjust nsamples as needed)
-    explainer = shap.KernelExplainer(predict, combined_features, nsamples=50)
+    # reduced nsamples for speed
+    explainer = shap.KernelExplainer(predict, combined_features, nsamples=20)
     shap_values = explainer.shap_values(combined_features)
     return shap_values
 
-# ----- Model Loading with Dummy/Pretrained Fallbacks -----
 @st.cache_resource
 def load_models():
     try:
@@ -206,31 +208,20 @@ def predict_crisis(text, image, tokenizer, text_model, image_processor, image_mo
         'fused_features': fused_features.detach().cpu().numpy() 
     }
 
-# ----- Optimized Batch Processing (Vectorized) -----
 def process_batch(df, confidence_threshold):
-    """
-    Optimized batch processing using vectorized operations.
-    """
     processed_df = df.copy()
     num_rows = len(processed_df)
-    # Generate all random confidence values at once
     conf_array = np.round(np.random.uniform(0, 1, size=num_rows), 2)
     processed_df['confidence'] = conf_array
-    # Vectorized category assignment
     processed_df['category'] = np.where(conf_array < confidence_threshold, "No Crisis", "Depression")
     processed_df['risk_level'] = np.where(conf_array < confidence_threshold, "Low", "High")
     return processed_df
 
-# ----- Cached SHAP Calculation -----
 @st.cache_data(show_spinner=False)
 def get_shap_values_cached(text_features, image_features, model):
     return generate_multimodal_explanation(text_features, image_features, model)
 
-# ----- Batch Processing with Progress Bar (Optional) -----
 def process_batch_with_progress(df, confidence_threshold):
-    """
-    Batch processing with a progress bar.
-    """
     processed_df = df.copy()
     num_rows = len(df)
     conf_array = np.round(np.random.uniform(0, 1, size=num_rows), 2)
@@ -242,34 +233,25 @@ def process_batch_with_progress(df, confidence_threshold):
     processed_df['risk_level'] = np.where(conf_array < confidence_threshold, "Low", "High")
     return processed_df
 
-# ----- Added Analysis Loading Bar -----
 def analysis_loading_bar():
-    """
-    Displays an analysis loading bar that updates percentage.
-    """
     progress_bar = st.progress(0)
     progress_text = st.empty()
-    # Simulate a loading process from 0% to 100%
     for percent_complete in range(0, 101, 5):
         progress_bar.progress(percent_complete / 100)
         progress_text.text(f"Analysis Loading: {percent_complete}%")
-        time.sleep(0.05)  # Adjust sleep time as needed
+        time.sleep(0.05)
     progress_text.text("Analysis Complete!")
     time.sleep(0.5)
     progress_bar.empty()
     progress_text.empty()
 
-# ----- Added Analyzing Content Complete Bar -----
 def analysis_complete_bar():
-    """
-    Displays an 'Analyzing Content Complete' bar that updates percentage.
-    """
     complete_bar = st.progress(0)
     complete_text = st.empty()
     for percent in range(0, 101, 10):
         complete_bar.progress(percent / 100)
         complete_text.text(f"Analyzing Content Complete: {percent}%")
-        time.sleep(0.05)  # Adjust sleep time as needed
+        time.sleep(0.05)
     complete_text.text("Analyzing Content Complete!")
     time.sleep(0.5)
     complete_bar.empty()
@@ -350,7 +332,6 @@ def main():
                     st.error(f"Error processing uploaded image: {e}")
             analyze_button = st.button("Analyze Content", type="primary")
         if analyze_button and text_input:
-            # ----- Added Analysis Loading Bar Call -----
             analysis_loading_bar()
             with st.spinner("Analyzing content..."):
                 results = predict_crisis(
@@ -360,7 +341,6 @@ def main():
                     crisis_model,
                     confidence_threshold
                 )
-                # ----- Added Analyzing Content Complete Bar Call -----
                 analysis_complete_bar()
                 with col2:
                     st.subheader("Analysis Results")
@@ -369,7 +349,7 @@ def main():
                         st.warning(f"Original prediction '{results['original_prediction']}' was below the confidence threshold ({results['max_confidence']:.2f}) and was changed to 'No Crisis'.")
                     st.markdown(f"**Detected Issue:** {results['category']} (Confidence: {results['max_confidence']:.2f})")
                     risk_color = {"Low": "green", "Medium": "orange", "High": "red", "Critical": "darkred"}
-                    st.markdown(f"**Risk Level:** <span style='color:{risk_color[results['risk_level']]}'>" \
+                    st.markdown(f"**Risk Level:** <span style='color:{risk_color[results['risk_level']]}'>"
                                 f"{results['risk_level']}</span>", unsafe_allow_html=True)
                     st.markdown("**Confidence Scores:**")
                     cat_items = list(results['category_probs'].items())
@@ -647,9 +627,3 @@ def main():
         
 if __name__ == "__main__":
     main()
-
-# ----- Optimizations Added Without Changing Previous Code -----
-# 1. Cached SHAP Calculation (get_shap_values_cached) and
-# 2. Optimized vectorized batch processing in process_batch and process_batch_with_progress
-# 3. Added Analysis Loading Bar (analysis_loading_bar) and
-# 4. Added Analyzing Content Complete Bar (analysis_complete_bar)
