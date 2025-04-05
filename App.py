@@ -259,6 +259,22 @@ def analysis_loading_bar():
     progress_bar.empty()
     progress_text.empty()
 
+# ----- Added Analyzing Content Complete Bar -----
+def analysis_complete_bar():
+    """
+    Displays an 'Analyzing Content Complete' bar that updates percentage.
+    """
+    complete_bar = st.progress(0)
+    complete_text = st.empty()
+    for percent in range(0, 101, 10):
+        complete_bar.progress(percent / 100)
+        complete_text.text(f"Analyzing Content Complete: {percent}%")
+        time.sleep(0.05)  # Adjust sleep time as needed
+    complete_text.text("Analyzing Content Complete!")
+    time.sleep(0.5)
+    complete_bar.empty()
+    complete_text.empty()
+
 def main():
     st.set_page_config(
         page_title="Mental Health Crisis Detector",
@@ -344,6 +360,8 @@ def main():
                     crisis_model,
                     confidence_threshold
                 )
+                # ----- Added Analyzing Content Complete Bar Call -----
+                analysis_complete_bar()
                 with col2:
                     st.subheader("Analysis Results")
                     st.markdown(f"**Confidence Threshold:** {results['confidence_threshold']:.2f}")
@@ -633,3 +651,5 @@ if __name__ == "__main__":
 # ----- Optimizations Added Without Changing Previous Code -----
 # 1. Cached SHAP Calculation (get_shap_values_cached) and
 # 2. Optimized vectorized batch processing in process_batch and process_batch_with_progress
+# 3. Added Analysis Loading Bar (analysis_loading_bar) and
+# 4. Added Analyzing Content Complete Bar (analysis_complete_bar)
