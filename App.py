@@ -20,6 +20,7 @@ from lime.lime_text import LimeTextExplainer
 import plotly.express as px
 import plotly.graph_objects as go
 import random  # For batch processing
+import time   # For simulating loading bar
 
 try:
     nltk.data.find('tokenizers/punkt')
@@ -241,6 +242,23 @@ def process_batch_with_progress(df, confidence_threshold):
     processed_df['risk_level'] = np.where(conf_array < confidence_threshold, "Low", "High")
     return processed_df
 
+# ----- Added Analysis Loading Bar -----
+def analysis_loading_bar():
+    """
+    Displays an analysis loading bar that updates percentage.
+    """
+    progress_bar = st.progress(0)
+    progress_text = st.empty()
+    # Simulate a loading process from 0% to 100%
+    for percent_complete in range(0, 101, 5):
+        progress_bar.progress(percent_complete / 100)
+        progress_text.text(f"Analysis Loading: {percent_complete}%")
+        time.sleep(0.05)  # Adjust sleep time as needed
+    progress_text.text("Analysis Complete!")
+    time.sleep(0.5)
+    progress_bar.empty()
+    progress_text.empty()
+
 def main():
     st.set_page_config(
         page_title="Mental Health Crisis Detector",
@@ -316,6 +334,8 @@ def main():
                     st.error(f"Error processing uploaded image: {e}")
             analyze_button = st.button("Analyze Content", type="primary")
         if analyze_button and text_input:
+            # ----- Added Analysis Loading Bar Call -----
+            analysis_loading_bar()
             with st.spinner("Analyzing content..."):
                 results = predict_crisis(
                     text_input, image,
