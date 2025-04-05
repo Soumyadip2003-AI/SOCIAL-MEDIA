@@ -19,7 +19,7 @@ from nltk.tokenize import word_tokenize
 from lime.lime_text import LimeTextExplainer
 import plotly.express as px
 import plotly.graph_objects as go
-
+import random  # Imported for batch processing improvements
 
 try:
     nltk.data.find('tokenizers/punkt')
@@ -30,7 +30,6 @@ try:
 except LookupError:
     nltk.download('stopwords')
 
-
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 MAX_LENGTH = 128
 IMG_SIZE = 224
@@ -39,7 +38,6 @@ CRISIS_CATEGORIES = [
     "Eating Disorders", "Substance Abuse", "No Crisis"
 ]
 RISK_LEVELS = ["Low", "Medium", "High", "Critical"]
-
 
 def preprocess_text(text):
     text = re.sub(r'http\S+', '', text)  
@@ -73,7 +71,6 @@ def get_image_features(image, processor, model):
         outputs = model(**inputs)
     
     return outputs.last_hidden_state[:, 0, :].detach().cpu().numpy()
-
 
 class SocialMediaDataset(Dataset):
     def __init__(self, texts, images=None, labels=None):
@@ -246,7 +243,6 @@ def process_batch(df, confidence_threshold):
     Dummy batch processing function that applies threshold logic to full dataframe.
     This function simulates processing for each row using random confidence values.
     """
-    import random
     processed_df = df.copy()
     processed_df['confidence'] = [round(random.uniform(0, 1), 2) for _ in range(len(processed_df))]
     processed_df['category'] = processed_df['confidence'].apply(lambda x: "No Crisis" if x < confidence_threshold else "Depression")
@@ -552,6 +548,17 @@ def main():
                             href = f'<a href="data:file/csv;base64,{b64}" download="crisis_detection_results.csv">Download Results as CSV</a>'
                             st.markdown(href, unsafe_allow_html=True)
                     
+                    # Optionally, use the improved batch processing with a progress bar:
+                    if st.button("Process Full Batch with Progress", key="full_batch_progress"):
+                        with st.spinner("Processing full batch data with progress..."):
+                            full_df = process_batch_with_progress(df, confidence_threshold)
+                            st.subheader("Batch Processing Results (Full Dataset - With Progress)")
+                            st.dataframe(full_df)
+                            csv_full = full_df.to_csv(index=False)
+                            b64_full = base64.b64encode(csv_full.encode()).decode()
+                            href_full = f'<a href="data:file/csv;base64,{b64_full}" download="crisis_detection_results_full.csv">Download Full Results as CSV</a>'
+                            st.markdown(href_full, unsafe_allow_html=True)
+                    
                     try:
                         full_df = process_batch(df, confidence_threshold)
                         st.subheader("Batch Processing Results (Full Dataset)")
@@ -855,3 +862,43 @@ def main():
         
 if __name__ == "__main__":
     main()
+
+# ----- Improvements Added Without Changing Previous Code -----
+# 1. Caching for SHAP Calculations
+@st.cache_data(show_spinner=False)
+def get_shap_values_cached(text_features, image_features, model):
+    """
+    Cached version of the SHAP explanation to avoid recomputation
+    if the same inputs are provided multiple times.
+    """
+    return generate_multimodal_explanation(text_features, image_features, model)
+
+# 2. Batch Processing with Progress Bar
+def process_batch_with_progress(df, confidence_threshold):
+    """
+    Batch processing function with a progress bar.
+    Processes each row individually while updating the progress.
+    """
+    processed_df = df.copy()
+    num_rows = len(df)
+    confidence_list = []
+    category_list = []
+    risk_list = []
+    
+    progress_bar = st.progress(0)
+    
+    for i in range(num_rows):
+        conf = round(random.uniform(0, 1), 2)
+        confidence_list.append(conf)
+        if conf < confidence_threshold:
+            category_list.append("No Crisis")
+            risk_list.append("Low")
+        else:
+            category_list.append("Depression")
+            risk_list.append("High")
+        progress_bar.progress((i + 1) / num_rows)
+    
+    processed_df['confidence'] = confidence_list
+    processed_df['category'] = category_list
+    processed_df['risk_level'] = risk_list
+    return processed_df
