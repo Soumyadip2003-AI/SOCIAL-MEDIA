@@ -1,4 +1,19 @@
 import streamlit as st
+# Preload necessary HF Hub files, but don’t crash if offline
+from huggingface_hub import hf_hub_download, LocalEntryNotFoundError
+
+def preload_hf_files():
+    try:
+        hf_hub_download(repo_id="lysandre/arxiv-nlp", filename="config.json")
+    except LocalEntryNotFoundError:
+        st.warning("Could not preload lysandre/arxiv-nlp/config.json (offline).")
+    try:
+        hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
+    except LocalEntryNotFoundError:
+        st.warning("Could not preload google/fleurs/fleurs.py (offline).")
+
+preload_hf_files()
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,9 +37,7 @@ import plotly.graph_objects as go
 import random  # For batch processing
 import time   # For simulating loading bar
 from huggingface_hub import hf_hub_download
-hf_hub_download(repo_id="lysandre/arxiv-nlp", filename="config.json")
 
-hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
 
 try:
     nltk.data.find('tokenizers/punkt')
