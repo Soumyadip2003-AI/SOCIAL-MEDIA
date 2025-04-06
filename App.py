@@ -13,7 +13,6 @@ import base64
 import json
 import shap
 import re
-import os
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
@@ -137,48 +136,26 @@ def generate_multimodal_explanation(text_features, img_features, model):
 # ----- Model Loading with Dummy/Pretrained Fallbacks -----
 @st.cache_resource
 def load_models():
-    # Define model paths/names
-    text_model_name = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
-    image_model_name = "google/vit-base-patch16-224"
-    local_text_model_path = "./model_cache/text_model"  # Update with your local path if different
-    local_image_model_path = "./model_cache/image_model"  # Update with your local path if different
-    
-    # Try loading text model
     try:
-        # First try loading from local path if it exists
-        if os.path.exists(local_text_model_path):
-            text_tokenizer = AutoTokenizer.from_pretrained(local_text_model_path)
-            text_model = AutoModel.from_pretrained(local_text_model_path).to(DEVICE)
-        else:
-            # If local path doesn't exist, try downloading (will fail offline)
-            text_tokenizer = AutoTokenizer.from_pretrained(text_model_name)
-            text_model = AutoModel.from_pretrained(text_model_name).to(DEVICE)
+        text_tokenizer = AutoTokenizer.from_pretrained("microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext")
+        text_model = AutoModel.from_pretrained("microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext").to(DEVICE)
     except Exception as e:
-        st.warning(f"Error loading text model: {e}")
+        st.error(f"Error loading text model: {e}")
         text_tokenizer = lambda x, **kwargs: {"input_ids": torch.zeros((1, MAX_LENGTH), dtype=torch.long)}
         class DummyModel(nn.Module):
             def forward(self, **kwargs):
                 return type("DummyOutput", (), {"last_hidden_state": torch.zeros((1, MAX_LENGTH, 768))})
         text_model = DummyModel().to(DEVICE)
-
-    # Try loading image model
     try:
-        # First try loading from local path if it exists
-        if os.path.exists(local_image_model_path):
-            image_processor = AutoImageProcessor.from_pretrained(local_image_model_path)
-            image_model = AutoModel.from_pretrained(local_image_model_path).to(DEVICE)
-        else:
-            # If local path doesn't exist, try downloading (will fail offline)
-            image_processor = AutoImageProcessor.from_pretrained(image_model_name)
-            image_model = AutoModel.from_pretrained(image_model_name).to(DEVICE)
+        image_processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224")
+        image_model = AutoModel.from_pretrained("google/vit-base-patch16-224").to(DEVICE)
     except Exception as e:
-        st.warning(f"Error loading image model: {e}")
+        st.error(f"Error loading image model: {e}")
         image_processor = lambda image, **kwargs: {"pixel_values": torch.zeros((1, 3, IMG_SIZE, IMG_SIZE))}
         class DummyImageModel(nn.Module):
             def forward(self, **kwargs):
                 return type("DummyOutput", (), {"last_hidden_state": torch.zeros((1, 1, 768))})
         image_model = DummyImageModel().to(DEVICE)
-
     try:
         crisis_model = MultimodalCrisisDetector().to(DEVICE)
     except Exception as e:
@@ -186,14 +163,13 @@ def load_models():
         class DummyCrisisModel(nn.Module):
             def forward(self, text_features, img_features):
                 batch_size = text_features.size(0)
-                return (
-                    torch.zeros((batch_size, len(CRISIS_CATEGORIES))),
-                    torch.zeros((batch_size, len(RISK_LEVELS))),
-                    torch.zeros((batch_size, 256))
-                )
+                dummy_logits = torch.zeros((batch_size, len(CRISIS_CATEGORIES)))
+                dummy_risk_logits = torch.zeros((batch_size, len(RISK_LEVELS)))
+                dummy_fused = torch.zeros((batch_size, 256))
+                return dummy_logits, dummy_risk_logits, dummy_fused
         crisis_model = DummyCrisisModel().to(DEVICE)
-
     return text_tokenizer, text_model, image_processor, image_model, crisis_model
+
 def predict_crisis(text, image, tokenizer, text_model, image_processor, image_model, crisis_model, confidence_threshold=0.5):
     processed_text = preprocess_text(text)
     text_features = get_text_features(processed_text, tokenizer, text_model)
@@ -305,16 +281,12 @@ def main():
         page_icon="🧠",
         layout="wide"
     )
-    
-    # Load models (will try to download first if online)
     text_tokenizer, text_model, image_processor, image_model, crisis_model = load_models()
-    
     st.title("Explainable Multimodal Mental Health Crisis Detector")
     st.markdown("""
     This application analyzes social media posts to detect potential mental health crises. 
     Upload text and optional images to get an assessment and explanation of the results.
     """)
-    
     with st.sidebar:
         st.header("About")
         st.markdown("""
@@ -325,27 +297,18 @@ def main():
         professional mental health evaluation. If you or someone you know is in crisis, 
         please contact a mental health professional or crisis hotline immediately.
         """)
-        
-        # Model status indicators
-        st.header("Model Status")
-        text_model_status = "✅ Loaded" if hasattr(st.session_state, 'using_real_text_model') and st.session_state.using_real_text_model else "❌ Using fallback"
-        image_model_status = "✅ Loaded" if hasattr(st.session_state, 'using_real_image_model') and st.session_state.using_real_image_model else "❌ Using fallback"
-        
-        st.markdown(f"**Text Model:** {text_model_status}")
-        st.markdown(f"**Image Model:** {image_model_status}")
-        
-        if (not hasattr(st.session_state, 'using_real_text_model') or 
-            not st.session_state.using_real_text_model or 
-            not hasattr(st.session_state, 'using_real_image_model') or 
-            not st.session_state.using_real_image_model):
-            st.info("To use full model capabilities, run this app with internet access first to download models.")
-            if st.button("Try downloading models"):
-                initialize_models()
-                st.experimental_rerun()
-        
-        # Rest of your sidebar code...
         st.header("Help")
-        # (existing help section)
+        st.markdown("""
+        **How to use this tool:**
+        
+        1. Enter text from a social media post
+        2. Upload an image.
+        3. Click "Analyze Content" to process
+        4. Review the results with explanations
+        5. Adjust the confidence threshold below if needed
+        
+        For batch processing, use the "Batch Processing" tab.
+        """)
         st.header("Settings")
         confidence_threshold = st.slider(
             "Detection Confidence Threshold",
@@ -354,11 +317,6 @@ def main():
             value=0.5,
             help="Minimum confidence level required for crisis detection"
         )
-        # (rest of settings section)
-    
-    # Rest of your main function remains the same
-    # ...
-        
         st.info("""
         **How the threshold works:** 
         
@@ -695,3 +653,6 @@ if __name__ == "__main__":
 # 2. Optimized vectorized batch processing in process_batch and process_batch_with_progress
 # 3. Added Analysis Loading Bar (analysis_loading_bar) and
 # 4. Added Analyzing Content Complete Bar (analysis_complete_bar)
+
+
+
