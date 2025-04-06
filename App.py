@@ -1,19 +1,24 @@
 import streamlit as st
-# Preload necessary HF Hub files, but don’t crash if offline
-from huggingface_hub import hf_hub_download, LocalEntryNotFoundError
 
-def preload_hf_files():
-    try:
-        hf_hub_download(repo_id="lysandre/arxiv-nlp", filename="config.json")
-    except LocalEntryNotFoundError:
-        st.warning("Could not preload lysandre/arxiv-nlp/config.json (offline).")
-    try:
-        hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
-    except LocalEntryNotFoundError:
-        st.warning("Could not preload google/fleurs/fleurs.py (offline).")
+# Attempt to preload HF Hub files if huggingface_hub is installed
+try:
+    from huggingface_hub import hf_hub_download, LocalEntryNotFoundError
 
-preload_hf_files()
+    def preload_hf_files():
+        try:
+            hf_hub_download(repo_id="lysandre/arxiv-nlp", filename="config.json")
+        except LocalEntryNotFoundError:
+            st.warning("Could not preload lysandre/arxiv-nlp/config.json (offline).")
+        try:
+            hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
+        except LocalEntryNotFoundError:
+            st.warning("Could not preload google/fleurs/fleurs.py (offline).")
 
+    preload_hf_files()
+
+except ImportError:
+    # huggingface_hub not available—skip preloading
+    pass
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
