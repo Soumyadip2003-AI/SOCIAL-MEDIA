@@ -12,3 +12,4 @@ lime
 plotly
 huggingface_hub>=0.25.0
 peft
+huggingface_hub>=0.13.0
