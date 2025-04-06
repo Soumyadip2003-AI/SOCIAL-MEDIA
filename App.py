@@ -21,6 +21,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import random  # For batch processing
 import time   # For simulating loading bar
+from huggingface_hub import snapshot_download
+
+snapshot_download(repo_id="meta-llama/Llama-2-7b-hf", repo_type="model")
 
 try:
     nltk.data.find('tokenizers/punkt')
