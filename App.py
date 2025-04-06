@@ -358,7 +358,7 @@ def main():
     
     # Rest of your main function remains the same
     # ...
-        
+        )
         st.info("""
         **How the threshold works:** 
         
