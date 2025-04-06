@@ -136,26 +136,42 @@ def generate_multimodal_explanation(text_features, img_features, model):
 # ----- Model Loading with Dummy/Pretrained Fallbacks -----
 @st.cache_resource
 def load_models():
+    # Ensure Transformers runs in offline mode
+    # You can also set TRANSFORMERS_OFFLINE=1 in your environment
     try:
-        text_tokenizer = AutoTokenizer.from_pretrained("microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext")
-        text_model = AutoModel.from_pretrained("microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext").to(DEVICE)
+        text_tokenizer = AutoTokenizer.from_pretrained(
+            "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext",
+            local_files_only=True
+        )
+        text_model = AutoModel.from_pretrained(
+            "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext",
+            local_files_only=True
+        ).to(DEVICE)
     except Exception as e:
-        st.error(f"Error loading text model: {e}")
+        st.error(f"Error loading text model offline: {e}")
         text_tokenizer = lambda x, **kwargs: {"input_ids": torch.zeros((1, MAX_LENGTH), dtype=torch.long)}
         class DummyModel(nn.Module):
             def forward(self, **kwargs):
                 return type("DummyOutput", (), {"last_hidden_state": torch.zeros((1, MAX_LENGTH, 768))})
         text_model = DummyModel().to(DEVICE)
+
     try:
-        image_processor = AutoImageProcessor.from_pretrained("google/vit-base-patch16-224")
-        image_model = AutoModel.from_pretrained("google/vit-base-patch16-224").to(DEVICE)
+        image_processor = AutoImageProcessor.from_pretrained(
+            "google/vit-base-patch16-224",
+            local_files_only=True
+        )
+        image_model = AutoModel.from_pretrained(
+            "google/vit-base-patch16-224",
+            local_files_only=True
+        ).to(DEVICE)
     except Exception as e:
-        st.error(f"Error loading image model: {e}")
+        st.error(f"Error loading image model offline: {e}")
         image_processor = lambda image, **kwargs: {"pixel_values": torch.zeros((1, 3, IMG_SIZE, IMG_SIZE))}
         class DummyImageModel(nn.Module):
             def forward(self, **kwargs):
                 return type("DummyOutput", (), {"last_hidden_state": torch.zeros((1, 1, 768))})
         image_model = DummyImageModel().to(DEVICE)
+
     try:
         crisis_model = MultimodalCrisisDetector().to(DEVICE)
     except Exception as e:
@@ -163,13 +179,14 @@ def load_models():
         class DummyCrisisModel(nn.Module):
             def forward(self, text_features, img_features):
                 batch_size = text_features.size(0)
-                dummy_logits = torch.zeros((batch_size, len(CRISIS_CATEGORIES)))
-                dummy_risk_logits = torch.zeros((batch_size, len(RISK_LEVELS)))
-                dummy_fused = torch.zeros((batch_size, 256))
-                return dummy_logits, dummy_risk_logits, dummy_fused
+                return (
+                    torch.zeros((batch_size, len(CRISIS_CATEGORIES))),
+                    torch.zeros((batch_size, len(RISK_LEVELS))),
+                    torch.zeros((batch_size, 256))
+                )
         crisis_model = DummyCrisisModel().to(DEVICE)
-    return text_tokenizer, text_model, image_processor, image_model, crisis_model
 
+    return text_tokenizer, text_model, image_processor, image_model, crisis_model
 def predict_crisis(text, image, tokenizer, text_model, image_processor, image_model, crisis_model, confidence_threshold=0.5):
     processed_text = preprocess_text(text)
     text_features = get_text_features(processed_text, tokenizer, text_model)
