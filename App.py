@@ -21,6 +21,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import random  # For batch processing
 import time   # For simulating loading bar
+from huggingface_hub import hf_hub_download
+hf_hub_download(repo_id="lysandre/arxiv-nlp", filename="config.json")
+
+hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
 
 try:
     nltk.data.find('tokenizers/punkt')
