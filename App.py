@@ -1,6 +1,6 @@
 import streamlit as st
 # Preload necessary HF Hub files, but don’t crash if offline
-from huggingface_hub import hf_hub_download, LocalEntryNotFoundError
+from huggingface_hub.utils._errors import LocalEntryNotFoundError
 
 def preload_hf_files():
     try:
@@ -13,7 +13,6 @@ def preload_hf_files():
         st.warning("Could not preload google/fleurs/fleurs.py (offline).")
 
 preload_hf_files()
-from huggingface_hub.utils._errors import LocalEntryNotFoundError
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
