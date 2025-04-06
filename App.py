@@ -13,6 +13,7 @@ import base64
 import json
 import shap
 import re
+import os
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
@@ -136,36 +137,42 @@ def generate_multimodal_explanation(text_features, img_features, model):
 # ----- Model Loading with Dummy/Pretrained Fallbacks -----
 @st.cache_resource
 def load_models():
-    # Ensure Transformers runs in offline mode
-    # You can also set TRANSFORMERS_OFFLINE=1 in your environment
+    # Define model paths/names
+    text_model_name = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
+    image_model_name = "google/vit-base-patch16-224"
+    local_text_model_path = "./model_cache/text_model"  # Update with your local path if different
+    local_image_model_path = "./model_cache/image_model"  # Update with your local path if different
+    
+    # Try loading text model
     try:
-        text_tokenizer = AutoTokenizer.from_pretrained(
-            "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext",
-            local_files_only=True
-        )
-        text_model = AutoModel.from_pretrained(
-            "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext",
-            local_files_only=True
-        ).to(DEVICE)
+        # First try loading from local path if it exists
+        if os.path.exists(local_text_model_path):
+            text_tokenizer = AutoTokenizer.from_pretrained(local_text_model_path)
+            text_model = AutoModel.from_pretrained(local_text_model_path).to(DEVICE)
+        else:
+            # If local path doesn't exist, try downloading (will fail offline)
+            text_tokenizer = AutoTokenizer.from_pretrained(text_model_name)
+            text_model = AutoModel.from_pretrained(text_model_name).to(DEVICE)
     except Exception as e:
-        st.error(f"Error loading text model offline: {e}")
+        st.warning(f"Error loading text model: {e}")
         text_tokenizer = lambda x, **kwargs: {"input_ids": torch.zeros((1, MAX_LENGTH), dtype=torch.long)}
         class DummyModel(nn.Module):
             def forward(self, **kwargs):
                 return type("DummyOutput", (), {"last_hidden_state": torch.zeros((1, MAX_LENGTH, 768))})
         text_model = DummyModel().to(DEVICE)
 
+    # Try loading image model
     try:
-        image_processor = AutoImageProcessor.from_pretrained(
-            "google/vit-base-patch16-224",
-            local_files_only=True
-        )
-        image_model = AutoModel.from_pretrained(
-            "google/vit-base-patch16-224",
-            local_files_only=True
-        ).to(DEVICE)
+        # First try loading from local path if it exists
+        if os.path.exists(local_image_model_path):
+            image_processor = AutoImageProcessor.from_pretrained(local_image_model_path)
+            image_model = AutoModel.from_pretrained(local_image_model_path).to(DEVICE)
+        else:
+            # If local path doesn't exist, try downloading (will fail offline)
+            image_processor = AutoImageProcessor.from_pretrained(image_model_name)
+            image_model = AutoModel.from_pretrained(image_model_name).to(DEVICE)
     except Exception as e:
-        st.error(f"Error loading image model offline: {e}")
+        st.warning(f"Error loading image model: {e}")
         image_processor = lambda image, **kwargs: {"pixel_values": torch.zeros((1, 3, IMG_SIZE, IMG_SIZE))}
         class DummyImageModel(nn.Module):
             def forward(self, **kwargs):
