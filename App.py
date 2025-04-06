@@ -1,47 +1,4 @@
 import streamlit as st
-
-# Try to import the required huggingface_hub components
-try:
-    from huggingface_hub.utils._errors import LocalEntryNotFoundError
-    from huggingface_hub import hf_hub_download
-    
-    # Define the preload function
-    def preload_hf_files():
-        try:
-            hf_hub_download(repo_id="lysandre/arxiv-nlp", filename="config.json")
-        except LocalEntryNotFoundError:
-            st.warning("Could not preload lysandre/arxiv-nlp/config.json (offline).")
-        try:
-            hf_hub_download(repo_id="google/fleurs", filename="fleurs.py", repo_type="dataset")
-        except LocalEntryNotFoundError:
-            st.warning("Could not preload google/fleurs/fleurs.py (offline).")
-            
-    # Call the preload function
-    preload_hf_files()
-    
-except ImportError:
-    # If the import fails, create a placeholder for the missing error class
-    class LocalEntryNotFoundError(Exception):
-        pass
-    
-    # Create a placeholder function for hf_hub_download
-    def hf_hub_download(*args, **kwargs):
-        st.warning("huggingface_hub not properly installed. Some functionality may be limited.")
-        return None
-    
-    st.warning("⚠️ huggingface_hub module not found or incompatible version. Installing required packages...")
-    
-    # Attempt to install the package using pip (this works in some Streamlit environments)
-    import subprocess
-    import sys
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "huggingface_hub>=0.16.0"])
-        st.success("huggingface_hub installed successfully! Please restart the app.")
-        # Note: The app will need to be restarted to use the newly installed package
-    except:
-        st.error("Failed to install huggingface_hub. Please make sure your requirements.txt includes 'huggingface_hub>=0.16.0'")
-
-# Continue with the rest of your imports
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
