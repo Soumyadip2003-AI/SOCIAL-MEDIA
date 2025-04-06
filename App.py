@@ -14,8 +14,6 @@ import json
 import shap
 import re
 import os
-from pathlib import Path
-import streamlit as st
 import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
@@ -137,57 +135,6 @@ def generate_multimodal_explanation(text_features, img_features, model):
     return shap_values
 
 # ----- Model Loading with Dummy/Pretrained Fallbacks -----
-def initialize_models():
-    """
-    Downloads models when online and sets up paths for offline use.
-    This function should be called before the Streamlit cache.
-    """
-    # Define model paths
-    cache_dir = Path("./model_cache")
-    cache_dir.mkdir(exist_ok=True)
-    text_model_dir = cache_dir / "text_model"
-    image_model_dir = cache_dir / "image_model"
-    
-    # Create a flag for the models download status
-    if 'models_downloaded' not in st.session_state:
-        st.session_state.models_downloaded = (
-            os.path.exists(text_model_dir) and 
-            os.path.exists(image_model_dir)
-        )
-    
-    # If models not yet downloaded, attempt to download
-    if not st.session_state.models_downloaded:
-        try:
-            from transformers import AutoTokenizer, AutoModel, AutoImageProcessor
-            
-            # Download text model
-            text_model_name = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext"
-            if not os.path.exists(text_model_dir):
-                with st.status("Downloading text model (will be cached for offline use)..."):
-                    tokenizer = AutoTokenizer.from_pretrained(text_model_name)
-                    tokenizer.save_pretrained(text_model_dir)
-                    model = AutoModel.from_pretrained(text_model_name)
-                    model.save_pretrained(text_model_dir)
-                    st.success("Text model downloaded successfully!")
-            
-            # Download image model
-            image_model_name = "google/vit-base-patch16-224" 
-            if not os.path.exists(image_model_dir):
-                with st.status("Downloading image model (will be cached for offline use)..."):
-                    processor = AutoImageProcessor.from_pretrained(image_model_name)
-                    processor.save_pretrained(image_model_dir)
-                    model = AutoModel.from_pretrained(image_model_name)
-                    model.save_pretrained(image_model_dir)
-                    st.success("Image model downloaded successfully!")
-            
-            st.session_state.models_downloaded = True
-            st.success("All models ready! The app will now work offline.")
-            
-        except Exception as e:
-            st.warning(f"Couldn't download models: {e}")
-            st.info("Running in offline mode with fallback dummy models.")
-    
-    return text_model_dir, image_model_dir
 @st.cache_resource
 def load_models():
     # Define model paths/names
