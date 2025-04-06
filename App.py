@@ -13,6 +13,7 @@ def preload_hf_files():
         st.warning("Could not preload google/fleurs/fleurs.py (offline).")
 
 preload_hf_files()
+from huggingface_hub.utils._errors import LocalEntryNotFoundError
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
