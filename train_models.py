@@ -26,12 +26,48 @@ import cv2
 from PIL import Image
 import io
 import warnings
+from transformers import BertTokenizer
+
+# Download and cache the tokenizer
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', local_files_only=False)
 warnings.filterwarnings('ignore')
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+try:
+    from transformers import BertTokenizer
+    bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    bert_available = True
+except Exception as e:
+    print(f"Could not load BERT tokenizer. Some features may be limited. Error: {e}")
+    bert_available = False
+
+# Later in your code
+if bert_available:
+    # Use BERT features
+    pass
+else:
+    # Use fallback approach
+    logger.warning("BERT not available, using fallback features only")
+
+try:
+    from transformers import BertTokenizer
+    bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    bert_available = True
+except Exception as e:
+    print(f"Could not load BERT tokenizer. Some features may be limited. Error: {e}")
+    bert_available = False
+
+# Later in your code
+if bert_available:
+    # Use BERT features
+    pass
+else:
+    # Use fallback approach
+    logger.warning("BERT not available, using fallback features only")
 
 # Download necessary NLTK resources
 nltk.download('punkt', quiet=True)
