@@ -10,4 +10,5 @@ shap
 nltk
 lime
 plotly
+opencv-python
 huggingface_hub>=0.16.0
