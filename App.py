@@ -15,6 +15,27 @@ import time
 import random
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
+
+# Function to check internet connectivity
+def check_internet_connection():
+    try:
+        # Try to connect to a reliable server with a short timeout
+        requests.get("https://www.google.com", timeout=3)
+        return True
+    except requests.ConnectionError:
+        return False
+    except:
+        return False
+
+# Function to determine if offline mode should be used
+def is_offline_mode():
+    # If user has explicitly set a preference, use that
+    if 'offline_mode_override' in st.session_state and st.session_state.offline_mode_override is not None:
+        return st.session_state.offline_mode_override
+    
+    # Otherwise, automatically detect based on internet connectivity
+    return not check_internet_connection()
 
 # Configure error handling for missing optional dependencies
 try:
@@ -62,9 +83,6 @@ CRISIS_CATEGORIES = [
 ]
 RISK_LEVELS = ["Low", "Medium", "High", "Critical"]
 
-# Use offline mode flag
-USE_OFFLINE_MODE = False  # Set this to True to use dummy models instead of downloading
-
 def preprocess_text(text):
     text = re.sub(r'http\S+', '', text)  
     text = re.sub(r'@\w+', '', text)  
@@ -74,7 +92,7 @@ def preprocess_text(text):
 
 # Create robust text feature extraction with fallback for offline mode
 def get_text_features(text, tokenizer, model):
-    if USE_OFFLINE_MODE or not TRANSFORMERS_AVAILABLE:
+    if is_offline_mode() or not TRANSFORMERS_AVAILABLE:
         # Generate consistent pseudo-random features based on text hash
         text_hash = hash(text) % 10000
         random.seed(text_hash)
@@ -104,7 +122,7 @@ def get_image_features(image, processor, model):
     if image is None:
         return np.zeros((1, 768))
     
-    if USE_OFFLINE_MODE or not TRANSFORMERS_AVAILABLE:
+    if is_offline_mode() or not TRANSFORMERS_AVAILABLE:
         # Generate consistent pseudo-random features based on image data
         img_hash = hash(str(np.array(image).sum())) % 10000
         random.seed(img_hash)
@@ -245,7 +263,7 @@ def load_models():
     image_model = None
     
     # Only try to load real models if not in offline mode
-    if not USE_OFFLINE_MODE and TRANSFORMERS_AVAILABLE:
+    if not is_offline_mode() and TRANSFORMERS_AVAILABLE:
         try:
             st.info("Attempting to load models from Hugging Face...")
             # Try loading the text model
@@ -283,8 +301,8 @@ def load_models():
     crisis_model = MultimodalCrisisDetector().to(DEVICE)
     
     # Inform about offline mode if active
-    if USE_OFFLINE_MODE:
-        st.info("⚠️ Running in offline mode with simulated models. For full functionality, set USE_OFFLINE_MODE to False and ensure internet connectivity.")
+    if is_offline_mode():
+        st.info("⚠️ Running in offline mode with simulated models. For full functionality, select 'Always Online' in Mode Settings and ensure internet connectivity.")
     
     return text_tokenizer, text_model, image_processor, image_model, crisis_model
 
@@ -304,7 +322,7 @@ def predict_crisis(text, image, tokenizer, text_model, image_processor, image_mo
         logits, risk_logits, fused_features = crisis_model(text_tensor, image_tensor)
         
         # In offline mode, we simulate reasonable predictions
-        if USE_OFFLINE_MODE:
+        if is_offline_mode():
             # Use text sentiment to influence predictions in a consistent way
             text_hash = hash(text) % 10000
             random.seed(text_hash)
@@ -457,12 +475,16 @@ def main():
         layout="wide"
     )
     
+    # Initialize session state for offline mode if not exists
+    if 'offline_mode_override' not in st.session_state:
+        st.session_state.offline_mode_override = None
+    
     # Display offline mode notice at the top if active
-    if USE_OFFLINE_MODE:
+    if is_offline_mode():
         st.warning("""
         ⚠️ **OFFLINE MODE ACTIVE**: This app is running with simulated models instead of actual AI models.
         Results are for demonstration purposes only and do not represent actual mental health analysis.
-        To use real models, set `USE_OFFLINE_MODE = False` in the code and ensure internet connectivity.
+        To use real models, ensure internet connectivity or change the mode setting in the sidebar.
         """)
     
     text_tokenizer, text_model, image_processor, image_model, crisis_model = load_models()
@@ -514,9 +536,27 @@ def main():
         - Higher threshold (0.8-1.0): Only high-confidence detections, may miss subtle signs
         """)
         
-        # Add offline toggle in sidebar
-        if st.checkbox("Toggle Offline Mode", value=USE_OFFLINE_MODE):
-            st.warning("Changing this setting requires app restart to take effect")
+        # Add mode selection in the sidebar
+        st.header("Mode Settings")
+        mode_options = ["Auto-detect", "Always Online", "Always Offline"]
+        selected_mode = st.radio(
+            "Operation Mode",
+            options=mode_options,
+            index=0,
+            help="Choose how the app should handle online/offline modes"
+        )
+        
+        # Update the session state based on selection
+        if selected_mode == "Auto-detect":
+            st.session_state.offline_mode_override = None
+            current_mode = "Offline" if is_offline_mode() else "Online"
+            st.info(f"Auto-detected mode: {current_mode}")
+        elif selected_mode == "Always Online":
+            st.session_state.offline_mode_override = False
+            st.info("Manually set to Online mode")
+        else:  # Always Offline
+            st.session_state.offline_mode_override = True
+            st.info("Manually set to Offline mode")
     
     tabs = st.tabs(["Analysis", "Batch Processing", "Model Explanation", "Documentation"])
     
@@ -565,7 +605,7 @@ def main():
                 with col2:
                     st.subheader("Analysis Results")
                     
-                    if USE_OFFLINE_MODE:
+                    if is_offline_mode():
                         st.info("⚠️ Results are simulated in offline mode")
                     
                     st.markdown(f"**Confidence Threshold:** {results['confidence_threshold']:.2f}")
@@ -664,274 +704,192 @@ def main():
                     1. If you're monitoring this content, consider reaching out to the individual
                     2. Provide resources appropriate to the detected issue
                     3. For high or critical risk levels, consider immediate intervention
+4. Document the time, content, and risk assessment for follow-up
+                    
+                    **IMPORTANT:** This tool is not a substitute for professional mental health evaluation.
+                    Always consult qualified mental health professionals for actual intervention.
                     """)
-                    
-                    st.markdown("### Relevant Resources")
-                    resources = {
-                        "Depression": ["National Institute of Mental Health - Depression Information", "Depression and Bipolar Support Alliance"],
-                        "Anxiety": ["Anxiety and Depression Association of America", "National Alliance on Mental Illness - Anxiety Disorders"],
-                        "Suicidal Ideation": ["National Suicide Prevention Lifeline: 988 or 1-800-273-8255", "Crisis Text Line: Text HOME to 741741"],
-                        "Self-harm": ["Self-Injury Foundation", "S.A.F.E. Alternatives (Self-Abuse Finally Ends)"],
-                        "Eating Disorders": ["National Eating Disorders Association", "Eating Disorder Hope"],
-                        "Substance Abuse": ["Substance Abuse and Mental Health Services Administration (SAMHSA)", "National Institute on Drug Abuse"]
-                    }
-                    
-                if results['category'] in resources:
-                        st.markdown("**Resources for {}:**".format(results['category']))
-                        for resource in resources[results['category']]:
-                            st.markdown(f"- {resource}")
-                        else:
-                         st.markdown("Please check with mental health professionals for appropriate resources.")
                 else:
-                    st.markdown("No concerning mental health indicators detected in this content.")
+                    st.markdown("""
+                    Based on the analysis, this content does not show significant signs of a mental health crisis.
+                    However, continue monitoring if there are other concerning behaviors or context not captured by this tool.
+                    
+                    **Remember:** This tool has limitations and cannot detect all forms of mental health concerns.
+                    If you have reason to believe there is an issue despite this result, trust your judgment.
+                    """)
     
     with tabs[1]:
-        st.header("Batch Content Analysis")
+        st.header("Batch Processing")
         st.markdown("""
         Process multiple social media posts at once by uploading a CSV file.
-        The file should have a 'text' column containing the post content.
+        The file should have at least one column named 'text' containing the post content.
         """)
         
         uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
         
         if uploaded_file is not None:
             try:
-                df = pd.read_csv(uploaded_file)
-                if 'text' not in df.columns:
-                    st.error("CSV file must contain a 'text' column.")
+                data = pd.read_csv(uploaded_file)
+                if 'text' not in data.columns:
+                    st.error("CSV file must contain a column named 'text'")
                 else:
-                    st.success(f"Loaded {len(df)} records.")
+                    st.dataframe(data.head())
                     
-                    if st.button("Process Batch", type="primary"):
-                        with st.spinner("Processing batch..."):
-                            processed_df = process_batch(df, confidence_threshold)
+                    process_button = st.button("Process Batch", type="primary")
+                    
+                    if process_button:
+                        with st.spinner("Processing batch data..."):
+                            # Use the optimized batch processing function
+                            results_df = process_batch(data, confidence_threshold)
                             
-                            st.success(f"Processed {len(processed_df)} records.")
+                            st.success(f"Processed {len(results_df)} entries")
+                            
+                            # Display results
+                            st.subheader("Results")
+                            st.dataframe(results_df)
+                            
+                            # Create a download link for the processed data
+                            csv = results_df.to_csv(index=False)
+                            b64 = base64.b64encode(csv.encode()).decode()
+                            href = f'<a href="data:file/csv;base64,{b64}" download="processed_results.csv">Download Processed Results</a>'
+                            st.markdown(href, unsafe_allow_html=True)
                             
                             # Summary statistics
-                            st.subheader("Summary")
-                            category_counts = processed_df['category'].value_counts()
-                            risk_counts = processed_df['risk_level'].value_counts()
+                            st.subheader("Summary Statistics")
+                            crisis_counts = results_df['category'].value_counts()
+                            risk_counts = results_df['risk_level'].value_counts()
                             
                             col1, col2 = st.columns(2)
                             
                             with col1:
+                                st.markdown("**Crisis Categories**")
                                 fig = px.pie(
-                                    values=category_counts.values,
-                                    names=category_counts.index,
-                                    title="Mental Health Issues Detected"
+                                    values=crisis_counts.values,
+                                    names=crisis_counts.index,
+                                    title="Crisis Categories Distribution"
                                 )
                                 st.plotly_chart(fig, use_container_width=True)
                             
                             with col2:
+                                st.markdown("**Risk Levels**")
                                 fig = px.pie(
                                     values=risk_counts.values,
                                     names=risk_counts.index,
-                                    title="Risk Level Distribution",
-                                    color_discrete_sequence=['green', 'yellow', 'orange', 'red']
+                                    title="Risk Levels Distribution"
                                 )
                                 st.plotly_chart(fig, use_container_width=True)
-                            
-                            # Display dataframe with results
-                            st.subheader("Detailed Results")
-                            st.dataframe(processed_df)
-                            
-                            # Download results
-                            csv = processed_df.to_csv(index=False)
-                            b64 = base64.b64encode(csv.encode()).decode()
-                            href = f'<a href="data:file/csv;base64,{b64}" download="crisis_analysis_results.csv">Download Results CSV</a>'
-                            st.markdown(href, unsafe_allow_html=True)
             except Exception as e:
-                st.error(f"Error processing file: {e}")
+                st.error(f"Error processing file: {str(e)}")
     
     with tabs[2]:
         st.header("Model Explanation")
         st.markdown("""
-        This tab explains how the mental health crisis detection model works, its capabilities, 
-        and limitations.
+        ### How the Crisis Detection Works
+        
+        This application uses a multimodal approach that analyzes both text and images:
+        
+        1. **Text Analysis**: The text is processed using a specialized transformer model to extract semantic features.
+        2. **Image Analysis**: If provided, images are analyzed using a vision transformer to detect visual cues.
+        3. **Multimodal Fusion**: Text and image features are combined to create a comprehensive understanding.
+        4. **Crisis Classification**: The fused features are used to classify the content into different crisis categories.
+        5. **Risk Assessment**: A separate component evaluates the severity or risk level.
+        
+        ### Explainability Features
+        
+        The tool provides several ways to understand its decisions:
+        
+        - **Word Importance**: Highlights which words in the text contribute most to the detection.
+        - **Feature Attribution**: Shows how different aspects of the input influence the final decision.
+        - **Confidence Scores**: Provides probability scores for each possible category.
+        - **Threshold Control**: Allows adjusting the sensitivity of the detection system.
+        
+        ### Model Limitations
+        
+        - Limited to detecting patterns present in training data
+        - May not detect subtle or novel expressions of mental health issues
+        - Cultural and contextual nuances may be missed
+        - Does not have access to user history or broader context
+        - Not a substitute for professional mental health assessment
         """)
         
+        # Simple model architecture visualization
         st.subheader("Model Architecture")
         st.markdown("""
-        The system uses a multimodal approach combining:
-        
-        1. **Text Analysis:** Processes post text using a biomedical language model fine-tuned for mental health contexts
-        2. **Image Analysis:** Analyzes visual content for additional indicators using computer vision
-        3. **Multimodal Fusion:** Combines both modalities for comprehensive assessment
-        
-        The final prediction comes from a neural network that classifies content into seven categories and four risk levels.
+        The following diagram shows the high-level architecture of the multimodal crisis detection model:
         """)
         
-        st.subheader("Explainability Methods")
-        st.markdown("""
-        To ensure transparency, the model incorporates:
+        # Create a simple model architecture diagram with Mermaid
+        mermaid_code = """
+        graph TD
+            A[Social Media Post] --> B[Text Analysis]
+            A --> C[Image Analysis]
+            B --> D[Text Features]
+            C --> E[Image Features]
+            D --> F[Feature Fusion]
+            E --> F
+            F --> G[Crisis Classification]
+            F --> H[Risk Assessment]
+            G --> I[Results & Explanation]
+            H --> I
+        """
         
-        1. **LIME:** Explains which words contribute to a particular prediction
-        2. **SHAP:** Shows the overall feature importance across modalities
-        3. **Confidence Metrics:** Indicates the model's certainty in its predictions
-        """)
-        
-        # Visualization of the model architecture
-        st.subheader("Model Architecture Visualization")
-        
-        architecture_fig = go.Figure()
-        
-        # Add text input node
-        architecture_fig.add_shape(
-            type="rect", x0=0, y0=0, x1=2, y1=1,
-            line=dict(color="RoyalBlue", width=2),
-            fillcolor="lightblue", opacity=0.7
-        )
-        architecture_fig.add_annotation(x=1, y=0.5, text="Text Input",
-                           showarrow=False)
-        
-        # Add image input node
-        architecture_fig.add_shape(
-            type="rect", x0=0, y0=2, x1=2, y1=3,
-            line=dict(color="RoyalBlue", width=2),
-            fillcolor="lightblue", opacity=0.7
-        )
-        architecture_fig.add_annotation(x=1, y=2.5, text="Image Input",
-                           showarrow=False)
-        
-        # Add text encoder
-        architecture_fig.add_shape(
-            type="rect", x0=3, y0=0, x1=5, y1=1,
-            line=dict(color="ForestGreen", width=2),
-            fillcolor="lightgreen", opacity=0.7
-        )
-        architecture_fig.add_annotation(x=4, y=0.5, text="Text Encoder",
-                           showarrow=False)
-        
-        # Add image encoder
-        architecture_fig.add_shape(
-            type="rect", x0=3, y0=2, x1=5, y1=3,
-            line=dict(color="ForestGreen", width=2),
-            fillcolor="lightgreen", opacity=0.7
-        )
-        architecture_fig.add_annotation(x=4, y=2.5, text="Image Encoder",
-                           showarrow=False)
-        
-        # Add fusion module
-        architecture_fig.add_shape(
-            type="rect", x0=6, y0=1, x1=8, y1=2,
-            line=dict(color="Purple", width=2),
-            fillcolor="lavender", opacity=0.7
-        )
-        architecture_fig.add_annotation(x=7, y=1.5, text="Fusion Module",
-                           showarrow=False)
-        
-        # Add prediction module
-        architecture_fig.add_shape(
-            type="rect", x0=9, y0=1, x1=11, y1=2,
-            line=dict(color="Crimson", width=2),
-            fillcolor="lightpink", opacity=0.7
-        )
-        architecture_fig.add_annotation(x=10, y=1.5, text="Classification",
-                           showarrow=False)
-        
-        # Add arrows
-        architecture_fig.add_shape(
-            type="line", x0=2, y0=0.5, x1=3, y1=0.5,
-            line=dict(color="black", width=1, dash="solid"),
-        )
-        architecture_fig.add_shape(
-            type="line", x0=2, y0=2.5, x1=3, y1=2.5,
-            line=dict(color="black", width=1, dash="solid"),
-        )
-        architecture_fig.add_shape(
-            type="line", x0=5, y0=0.5, x1=6, y1=1.5,
-            line=dict(color="black", width=1, dash="solid"),
-        )
-        architecture_fig.add_shape(
-            type="line", x0=5, y0=2.5, x1=6, y1=1.5,
-            line=dict(color="black", width=1, dash="solid"),
-        )
-        architecture_fig.add_shape(
-            type="line", x0=8, y0=1.5, x1=9, y1=1.5,
-            line=dict(color="black", width=1, dash="solid"),
-        )
-        
-        architecture_fig.update_layout(
-            showlegend=False,
-            width=700,
-            height=300,
-            xaxis=dict(
-                showticklabels=False,
-                showgrid=False,
-                zeroline=False,
-                range=[-1, 12]
-            ),
-            yaxis=dict(
-                showticklabels=False,
-                showgrid=False,
-                zeroline=False,
-                range=[-0.5, 3.5]
-            ),
-            plot_bgcolor='white'
-        )
-        
-        st.plotly_chart(architecture_fig)
-        
-        st.subheader("Model Limitations")
-        st.markdown("""
-        Important limitations to be aware of:
-        
-        1. **Not a Diagnostic Tool:** This system cannot diagnose mental health conditions and should not replace professional assessment
-        2. **Context Limitations:** May miss cultural nuances or contextual clues
-        3. **False Positives/Negatives:** Like all AI systems, it can misclassify content
-        4. **Language Constraints:** Works best with standard language; may struggle with slang or coded language
-        5. **Simulated Mode:** When running in offline mode, results are simulated for demonstration purposes only
-        """)
-        
+        st.markdown(f"```mermaid\n{mermaid_code}\n```")
+    
     with tabs[3]:
         st.header("Documentation")
         st.markdown("""
-        ## Mental Health Crisis Detector Documentation
+        ### Purpose
         
-        This application uses machine learning to analyze social media content for potential mental health crises.
+        This tool was developed to help identify potential mental health crises from social media content.
+        It can be used by:
         
-        ### Features
+        - Mental health professionals monitoring online communities
+        - Community moderators of support forums
+        - Researchers studying mental health expressions online
+        - Content filtering systems for social platforms
         
-        - **Multimodal Analysis:** Analyzes both text and images in social media posts
-        - **Explainable AI:** Provides transparent explanations for all predictions
-        - **Risk Stratification:** Categorizes content by risk level
-        - **Batch Processing:** Analyze multiple posts simultaneously
-        - **Adjustable Sensitivity:** Configure confidence thresholds based on needs
+        ### Crisis Categories
         
-        ### Mental Health Categories
+        The system detects the following categories of potential mental health concerns:
         
-        The system detects the following categories:
-        
-        1. **Depression:** Persistent feelings of sadness, hopelessness, lack of interest
-        2. **Anxiety:** Excessive worry, fear, nervousness
-        3. **Suicidal Ideation:** Thoughts of self-harm or suicide
-        4. **Self-harm:** Non-suicidal self-injury
-        5. **Eating Disorders:** Abnormal eating habits affecting physical/mental health
-        6. **Substance Abuse:** Harmful use of alcohol, drugs, or other substances
-        7. **No Crisis:** No detected mental health concern
+        1. **Depression**: Signs of persistent sadness, hopelessness, or loss of interest
+        2. **Anxiety**: Indications of excessive worry, fear, or panic
+        3. **Suicidal Ideation**: Expression of suicidal thoughts or intent
+        4. **Self-harm**: Content related to deliberate self-injury
+        5. **Eating Disorders**: Signs of disordered eating patterns or body image issues
+        6. **Substance Abuse**: Content related to problematic substance use
+        7. **No Crisis**: No significant indicators of mental health crisis
         
         ### Risk Levels
         
-        Posts are categorized into four risk levels:
+        Each detection is assigned a risk level:
         
-        - **Low:** Minimal or no risk indicators
-        - **Medium:** Some concerning elements, monitoring suggested
-        - **High:** Clear indicators of distress, intervention recommended
-        - **Critical:** Immediate attention required, possible emergency
+        - **Low**: Minimal cause for concern, likely just expressing normal emotions
+        - **Medium**: Some concerning elements, may warrant monitoring
+        - **High**: Clear indicators of mental health distress requiring attention
+        - **Critical**: Immediate intervention may be necessary
         
-        ### Technical Information
+        ### Privacy and Ethics
         
-        This application uses:
+        When using this tool, please consider:
         
-        - **Language Models:** Biomedical NLP models for text analysis
-        - **Computer Vision:** Image analysis models
-        - **Explainable AI:** LIME and SHAP for transparent explanations
-        - **Streamlit:** For the user interface
+        - Obtain proper consent when analyzing others' content
+        - Follow appropriate protocols for intervention
+        - Store results securely to protect sensitive information
+        - Use as a supportive tool, not as a replacement for human judgment
+        - Remember that false positives and false negatives are possible
         
-        ### Disclaimer
+        ### Technical Requirements
         
-        This tool is for demonstration and educational purposes only. It should not be used as a substitute for professional mental health evaluation. If you or someone you know is experiencing a mental health crisis, please contact a qualified professional immediately.
+        This application works best with:
+        - Modern web browser
+        - Internet connection (for full model functionality)
+        - CSV files in proper format for batch processing
+        
+        ### Support and Feedback
+        
+        For questions, issues, or feedback, please contact the development team at:  
+        support@mentalhealthdetector.example.com
         """)
 
 if __name__ == "__main__":
