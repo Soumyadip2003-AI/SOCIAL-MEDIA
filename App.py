@@ -652,3 +652,4 @@ if __name__ == "__main__":
 # 2. Optimized vectorized batch processing in process_batch and process_batch_with_progress
 # 3. Added Analysis Loading Bar (analysis_loading_bar) and
 # 4. Added Analyzing Content Complete Bar (analysis_complete_bar)
+
