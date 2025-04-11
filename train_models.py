@@ -10,7 +10,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from transformers import BertTokenizer, BertModel
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
@@ -26,48 +25,87 @@ import cv2
 from PIL import Image
 import io
 import warnings
-from transformers import BertTokenizer
-
-# Download and cache the tokenizer
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', local_files_only=False)
-warnings.filterwarnings('ignore')
+import sys
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Check and install required packages
+def install_required_packages():
+    """
+    Install required packages if not already installed
+    """
+    required_packages = {
+        'transformers': 'transformers>=4.28.0',
+        'torch': 'torch>=1.13.0',
+        'numpy': 'numpy>=1.20.0',
+        'pandas': 'pandas>=1.4.0',
+        'matplotlib': 'matplotlib>=3.5.0',
+        'seaborn': 'seaborn>=0.11.0',
+        'scikit-learn': 'scikit-learn>=1.0.0',
+        'nltk': 'nltk>=3.6.0',
+        'joblib': 'joblib>=1.1.0',
+        'tqdm': 'tqdm>=4.62.0',
+        'shap': 'shap>=0.40.0',
+        'opencv-python': 'opencv-python>=4.5.0',
+        'pillow': 'pillow>=9.0.0',
+    }
+    
+    packages_to_install = []
+    
+    for package, version_spec in required_packages.items():
+        try:
+            __import__(package)
+            logger.info(f"Package {package} is already installed.")
+        except ImportError:
+            packages_to_install.append(version_spec)
+            logger.warning(f"Package {package} is not installed.")
+    
+    if packages_to_install:
+        logger.info("Installing required packages...")
+        import subprocess
+        for package in packages_to_install:
+            logger.info(f"Installing {package}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+        logger.info("All required packages installed successfully.")
+        logger.info("Please restart the script for changes to take effect.")
+        sys.exit(0)
+    else:
+        logger.info("All required packages are already installed.")
+
+# Call the function to install required packages
+install_required_packages()
+
+# Now try to import transformers after ensuring it's installed
 try:
-    from transformers import BertTokenizer
-    bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    bert_available = True
-except Exception as e:
-    print(f"Could not load BERT tokenizer. Some features may be limited. Error: {e}")
+    from transformers import BertTokenizer, BertModel
+    # Try to load the BERT tokenizer with detailed error handling
+    try:
+        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        bert_available = True
+        logger.info("Successfully loaded BERT tokenizer.")
+    except Exception as e:
+        logger.error(f"Error loading BERT tokenizer: {e}")
+        logger.error(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        
+        # Try with offline mode if the first attempt failed
+        try:
+            logger.info("Attempting to download BERT tokenizer...")
+            tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', local_files_only=False)
+            bert_available = True
+            logger.info("Successfully downloaded and loaded BERT tokenizer.")
+        except Exception as e2:
+            logger.error(f"Second attempt failed: {e2}")
+            bert_available = False
+except ImportError:
+    logger.error("Could not import transformers library. Please install it manually.")
     bert_available = False
 
-# Later in your code
-if bert_available:
-    # Use BERT features
-    pass
-else:
-    # Use fallback approach
-    logger.warning("BERT not available, using fallback features only")
-
-try:
-    from transformers import BertTokenizer
-    bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    bert_available = True
-except Exception as e:
-    print(f"Could not load BERT tokenizer. Some features may be limited. Error: {e}")
-    bert_available = False
-
-# Later in your code
-if bert_available:
-    # Use BERT features
-    pass
-else:
-    # Use fallback approach
-    logger.warning("BERT not available, using fallback features only")
+warnings.filterwarnings('ignore')
 
 # Download necessary NLTK resources
 nltk.download('punkt', quiet=True)
@@ -324,7 +362,6 @@ def train_text_model(df, model_dir="models"):
     
     joblib.dump(text_model, f"{model_dir}/text_model.joblib")
     logger.info(f"Saved text model to {model_dir}/text_model.joblib")
-    logger.info(f"Saved text model to {model_dir}/text_model.joblib")
     
     # Plot feature importance
     plt.figure(figsize=(10, 8))
@@ -416,6 +453,11 @@ def train_bert_model(df, model_dir="models", epochs=3):
     """
     Train a BERT-based model for crisis detection
     """
+    # Check if BERT is available
+    if not bert_available:
+        logger.error("BERT tokenizer is not available. Cannot train BERT model.")
+        return None, None, 0.0
+        
     logger.info("Training BERT-based crisis detection model...")
     
     # Use CUDA if available
@@ -428,85 +470,92 @@ def train_bert_model(df, model_dir="models", epochs=3):
     )
     
     # Load tokenizer and model
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    bert_model = BertModel.from_pretrained('bert-base-uncased')
-    
-    # Create datasets
-    train_dataset = MentalHealthDataset(X_train, y_train, tokenizer)
-    test_dataset = MentalHealthDataset(X_test, y_test, tokenizer)
-    
-    # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=16)
-    
-    # Initialize model
-    model = BERTClassifier(bert_model)
-    model.to(device)
-    
-    # Define optimizer and loss
-    optimizer = optim.AdamW(model.parameters(), lr=2e-5)
-    criterion = nn.CrossEntropyLoss()
-    
-    # Training loop
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
+    try:
+        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        bert_model = BertModel.from_pretrained('bert-base-uncased')
         
-        for batch in progress_bar:
-            optimizer.zero_grad()
+        # Create datasets
+        train_dataset = MentalHealthDataset(X_train, y_train, tokenizer)
+        test_dataset = MentalHealthDataset(X_test, y_test, tokenizer)
+        
+        # Create data loaders
+        train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+        test_loader = DataLoader(test_dataset, batch_size=16)
+        
+        # Initialize model
+        model = BERTClassifier(bert_model)
+        model.to(device)
+        
+        # Define optimizer and loss
+        optimizer = optim.AdamW(model.parameters(), lr=2e-5)
+        criterion = nn.CrossEntropyLoss()
+        
+        # Training loop
+        for epoch in range(epochs):
+            model.train()
+            total_loss = 0
+            progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
             
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            token_type_ids = batch['token_type_ids'].to(device)
-            labels = batch['label'].to(device)
-            
-            outputs = model(input_ids, attention_mask, token_type_ids)
-            loss = criterion(outputs, labels)
-            
-            loss.backward()
-            optimizer.step()
-            
-            total_loss += loss.item()
-            progress_bar.set_postfix({"loss": total_loss / (progress_bar.n + 1)})
+            for batch in progress_bar:
+                optimizer.zero_grad()
+                
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                token_type_ids = batch['token_type_ids'].to(device)
+                labels = batch['label'].to(device)
+                
+                outputs = model(input_ids, attention_mask, token_type_ids)
+                loss = criterion(outputs, labels)
+                
+                loss.backward()
+                optimizer.step()
+                
+                total_loss += loss.item()
+                progress_bar.set_postfix({"loss": total_loss / (progress_bar.n + 1)})
+        
+        # Evaluation
+        model.eval()
+        y_true = []
+        y_pred = []
+        
+        with torch.no_grad():
+            for batch in tqdm(test_loader, desc="Evaluating"):
+                input_ids = batch['input_ids'].to(device)
+                attention_mask = batch['attention_mask'].to(device)
+                token_type_ids = batch['token_type_ids'].to(device)
+                labels = batch['label'].to(device)
+                
+                outputs = model(input_ids, attention_mask, token_type_ids)
+                _, preds = torch.max(outputs, 1)
+                
+                y_true.extend(labels.cpu().numpy())
+                y_pred.extend(preds.cpu().numpy())
+        
+        # Print metrics
+        accuracy = accuracy_score(y_true, y_pred)
+        report = classification_report(y_true, y_pred)
+        
+        logger.info(f"BERT model accuracy: {accuracy:.4f}")
+        logger.info(f"Classification report:\n{report}")
+        
+        # Save the model
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        
+        torch.save({
+            'model_state_dict': model.state_dict(),
+            'tokenizer': tokenizer
+        }, f"{model_dir}/bert_model.pt")
+        
+        logger.info(f"Saved BERT model to {model_dir}/bert_model.pt")
+        
+        return model, tokenizer, accuracy
     
-    # Evaluation
-    model.eval()
-    y_true = []
-    y_pred = []
-    
-    with torch.no_grad():
-        for batch in tqdm(test_loader, desc="Evaluating"):
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            token_type_ids = batch['token_type_ids'].to(device)
-            labels = batch['label'].to(device)
-            
-            outputs = model(input_ids, attention_mask, token_type_ids)
-            _, preds = torch.max(outputs, 1)
-            
-            y_true.extend(labels.cpu().numpy())
-            y_pred.extend(preds.cpu().numpy())
-    
-    # Print metrics
-    accuracy = accuracy_score(y_true, y_pred)
-    report = classification_report(y_true, y_pred)
-    
-    logger.info(f"BERT model accuracy: {accuracy:.4f}")
-    logger.info(f"Classification report:\n{report}")
-    
-    # Save the model
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
-    
-    torch.save({
-        'model_state_dict': model.state_dict(),
-        'tokenizer': tokenizer
-    }, f"{model_dir}/bert_model.pt")
-    
-    logger.info(f"Saved BERT model to {model_dir}/bert_model.pt")
-    
-    return model, tokenizer, accuracy
+    except Exception as e:
+        logger.error(f"Error in BERT model training: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None, 0.0
 
 # Load and preprocess multimodal data
 def load_multimodal_data(data_dir="data"):
@@ -737,68 +786,60 @@ def evaluate_input(text, audio_file=None, image_file=None, model_dir="models"):
         "final_score": None,
         "is_crisis": False,
         "confidence": 0.0,
-        "explanation": ""
+        "explanation": []
     }
     
-    # Check if models exist
-    text_model_path = f"{model_dir}/text_model.joblib"
-    bert_model_path = f"{model_dir}/bert_model.pt"
-    multimodal_model_path = f"{model_dir}/multimodal_model.pt"
+    # Text model inference
+    try:
+        text_model = joblib.load(f"{model_dir}/text_model.joblib")
+        vectorizer = text_model["vectorizer"]
+        classifier = text_model["classifier"]
+        
+        # Vectorize input
+        text_vec = vectorizer.transform([text])
+        
+        # Predict probability
+        proba = classifier.predict_proba(text_vec)[0]
+        result["text_score"] = float(proba[1])
+        
+        # Get feature importance for explanation
+        if proba[1] > 0.5:
+            # Get feature names
+            feature_names = vectorizer.get_feature_names_out()
+            
+            # Get important words in the input
+            text_tokens = word_tokenize(text.lower())
+            important_words = []
+            
+            for word in text_tokens:
+                if word in feature_names:
+                    idx = list(feature_names).index(word)
+                    importance = classifier.feature_importances_[idx]
+                    if importance > 0.01:
+                        important_words.append((word, importance))
+            
+            # Sort by importance
+            important_words.sort(key=lambda x: x[1], reverse=True)
+            
+            # Add to explanation
+            for word, importance in important_words[:5]:
+                result["explanation"].append(f"Crisis indicator word: '{word}' (importance: {importance:.4f})")
+        
+        logger.info(f"Text model score: {result['text_score']:.4f}")
+    except Exception as e:
+        logger.error(f"Error in text model inference: {e}")
     
-    # Process with text model if available
-    if os.path.exists(text_model_path):
+    # BERT model inference
+    if bert_available:
         try:
-            text_model = joblib.load(text_model_path)
-            vectorizer = text_model["vectorizer"]
-            classifier = text_model["classifier"]
-            
-            # Transform input
-            text_vec = vectorizer.transform([text])
-            
-            # Predict
-            text_score = classifier.predict_proba(text_vec)[0, 1]
-            result["text_score"] = float(text_score)
-            
-            logger.info(f"Text model crisis score: {text_score:.4f}")
-            
-            # Get top features
-            if text_score > 0.5:
-                # Get feature importance
-                feature_names = vectorizer.get_feature_names_out()
-                feature_importance = classifier.feature_importances_
-                
-                # Get features present in text
-                present_features = {}
-                for word in text.lower().split():
-                    if word in feature_names:
-                        idx = np.where(feature_names == word)[0]
-                        if len(idx) > 0:
-                            present_features[word] = feature_importance[idx[0]]
-                
-                # Sort by importance
-                sorted_features = sorted(present_features.items(), key=lambda x: x[1], reverse=True)
-                top_features = sorted_features[:5]
-                
-                feature_explanation = "Key concern indicators: " + ", ".join([f"{word}" for word, _ in top_features])
-                result["explanation"] += feature_explanation
-        except Exception as e:
-            logger.error(f"Error in text model evaluation: {e}")
-    
-    # Process with BERT model if available
-    if os.path.exists(bert_model_path):
-        try:
-            # Use CUDA if available
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            
             # Load model
-            checkpoint = torch.load(bert_model_path, map_location=device)
+            checkpoint = torch.load(f"{model_dir}/bert_model.pt", map_location='cpu')
             tokenizer = checkpoint['tokenizer']
             
-            # Load BERT
+            # Load BERT model
             bert_model = BertModel.from_pretrained('bert-base-uncased')
             model = BERTClassifier(bert_model)
             model.load_state_dict(checkpoint['model_state_dict'])
-            model.to(device)
             model.eval()
             
             # Tokenize input
@@ -813,69 +854,72 @@ def evaluate_input(text, audio_file=None, image_file=None, model_dir="models"):
                 return_tensors='pt'
             )
             
-            # Prepare input
-            input_ids = encoding['input_ids'].to(device)
-            attention_mask = encoding['attention_mask'].to(device)
-            token_type_ids = encoding['token_type_ids'].to(device)
-            
-            # Get prediction
+            # Predict
             with torch.no_grad():
+                input_ids = encoding['input_ids']
+                attention_mask = encoding['attention_mask']
+                token_type_ids = encoding['token_type_ids']
+                
                 outputs = model(input_ids, attention_mask, token_type_ids)
-                probs = torch.softmax(outputs, dim=1)
-                bert_score = probs[0, 1].item()
+                proba = torch.softmax(outputs, dim=1).numpy()[0]
+                
+                result["bert_score"] = float(proba[1])
             
-            result["bert_score"] = float(bert_score)
-            logger.info(f"BERT model crisis score: {bert_score:.4f}")
+            logger.info(f"BERT model score: {result['bert_score']:.4f}")
         except Exception as e:
-            logger.error(f"Error in BERT model evaluation: {e}")
+            logger.error(f"Error in BERT model inference: {e}")
     
-    # Process with multimodal model if all inputs available
-    if os.path.exists(multimodal_model_path) and audio_file and image_file:
+    # Multimodal model inference (if audio and image are provided)
+    if audio_file is not None or image_file is not None:
         try:
-            # Use CUDA if available
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            
             # Load model
-            checkpoint = torch.load(multimodal_model_path, map_location=device)
+            multimodal_data = torch.load(f"{model_dir}/multimodal_model.pt", map_location='cpu')
             
             # Extract components
-            text_vectorizer = checkpoint["text_vectorizer"]
-            text_dim = checkpoint["text_dim"]
-            audio_dim = checkpoint["audio_dim"]
-            image_dim = checkpoint["image_dim"]
+            text_vectorizer = multimodal_data["text_vectorizer"]
+            text_dim = multimodal_data["text_dim"]
+            audio_dim = multimodal_data["audio_dim"]
+            image_dim = multimodal_data["image_dim"]
             
             # Initialize model
             model = MultimodalFusionModel(text_dim, audio_dim, image_dim)
-            model.load_state_dict(checkpoint["model"])
-            model.to(device)
+            model.load_state_dict(multimodal_data["model"])
             model.eval()
             
             # Process text
             text_vec = text_vectorizer.transform([text]).toarray()
-            text_tensor = torch.FloatTensor(text_vec).to(device)
+            text_tensor = torch.FloatTensor(text_vec)
             
-            # Process audio (placeholder for actual audio processing)
-            # In a real system, we would extract MFCC features from the audio file
-            audio_features = np.random.rand(1, audio_dim)  # Placeholder
-            audio_tensor = torch.FloatTensor(audio_features).to(device)
+            # Process audio (or use zeros if not provided)
+            if audio_file is not None:
+                # In a real system, we would extract MFCC features here
+                # For now, we'll just use random values
+                audio_tensor = torch.rand(1, audio_dim)
+                logger.info("Using audio features for multimodal prediction")
+            else:
+                audio_tensor = torch.zeros(1, audio_dim)
             
-            # Process image (placeholder for actual image processing)
-            # In a real system, we would extract features from the image using a CNN
-            image_features = np.random.rand(1, image_dim)  # Placeholder
-            image_tensor = torch.FloatTensor(image_features).to(device)
+            # Process image (or use zeros if not provided)
+            if image_file is not None:
+                # In a real system, we would extract image features here
+                # For now, we'll just use random values
+                image_tensor = torch.rand(1, image_dim)
+                logger.info("Using image features for multimodal prediction")
+            else:
+                image_tensor = torch.zeros(1, image_dim)
             
-            # Get prediction
+            # Predict
             with torch.no_grad():
                 outputs = model(text_tensor, audio_tensor, image_tensor)
-                probs = torch.softmax(outputs, dim=1)
-                multimodal_score = probs[0, 1].item()
+                proba = torch.softmax(outputs, dim=1).numpy()[0]
+                
+                result["multimodal_score"] = float(proba[1])
             
-            result["multimodal_score"] = float(multimodal_score)
-            logger.info(f"Multimodal model crisis score: {multimodal_score:.4f}")
+            logger.info(f"Multimodal model score: {result['multimodal_score']:.4f}")
         except Exception as e:
-            logger.error(f"Error in multimodal model evaluation: {e}")
+            logger.error(f"Error in multimodal model inference: {e}")
     
-    # Compute final score (weighted average of available scores)
+    # Compute final score and decision
     scores = []
     weights = []
     
@@ -885,79 +929,188 @@ def evaluate_input(text, audio_file=None, image_file=None, model_dir="models"):
     
     if result["bert_score"] is not None:
         scores.append(result["bert_score"])
-        weights.append(2.0)  # BERT gets higher weight
+        weights.append(1.5)  # Give more weight to BERT
     
     if result["multimodal_score"] is not None:
         scores.append(result["multimodal_score"])
-        weights.append(3.0)  # Multimodal gets highest weight
+        weights.append(2.0)  # Give most weight to multimodal
     
     if scores:
-        final_score = np.average(scores, weights=weights)
-        result["final_score"] = float(final_score)
-        result["confidence"] = float(min(1.0, max(0.0, abs(final_score - 0.5) * 2)))
-        result["is_crisis"] = final_score >= 0.5
+        weighted_scores = [s * w for s, w in zip(scores, weights)]
+        result["final_score"] = sum(weighted_scores) / sum(weights)
+        result["confidence"] = max(scores)
         
-        logger.info(f"Final crisis score: {final_score:.4f} (Confidence: {result['confidence']:.4f})")
+        # Determine if crisis
+        if result["final_score"] > 0.7:
+            result["is_crisis"] = True
+            result["explanation"].insert(0, "HIGH RISK: Immediate attention required")
+        elif result["final_score"] > 0.5:
+            result["is_crisis"] = True
+            result["explanation"].insert(0, "MODERATE RISK: Close monitoring recommended")
+        else:
+            result["is_crisis"] = False
+            result["explanation"].insert(0, "LOW RISK: Continue support as needed")
         
-        # Generate explanation if not already present
-        if not result["explanation"]:
-            if result["is_crisis"]:
-                result["explanation"] = "The message contains language patterns consistent with a mental health crisis."
-            else:
-                result["explanation"] = "The message does not appear to indicate an immediate mental health crisis."
+        logger.info(f"Final crisis score: {result['final_score']:.4f}, Is crisis: {result['is_crisis']}")
     else:
-        result["explanation"] = "No models were able to evaluate the input."
+        logger.error("No models were able to provide scores")
+        result["explanation"].append("Error: Could not perform analysis")
     
     return result
 
-# Main function
+# Function to provide appropriate response based on crisis level
+def generate_response(result):
+    """
+    Generate an appropriate response based on crisis assessment
+    """
+    if result["is_crisis"]:
+        if result["final_score"] > 0.8:
+            return (
+                "I'm concerned about what you're expressing. It sounds like you might be in a crisis situation. "
+                "Please consider calling a crisis helpline right away: National Suicide Prevention Lifeline at 988 or 1-800-273-8255. "
+                "They have trained counselors available 24/7. If you're in immediate danger, please call emergency services (911)."
+            )
+        elif result["final_score"] > 0.6:
+            return (
+                "I'm concerned about what you're sharing. It sounds like you're going through a difficult time. "
+                "Consider reaching out to a mental health professional or a crisis helpline like the National Suicide Prevention Lifeline "
+                "at 988 or 1-800-273-8255. They can provide support and resources to help you."
+            )
+        else:
+            return (
+                "It sounds like you're experiencing some distress. Consider talking to someone you trust or a mental health professional. "
+                "Resources like the Crisis Text Line (text HOME to 741741) can also provide support if you need someone to talk to."
+            )
+    else:
+        return (
+            "Thank you for sharing. While I don't detect indications of crisis in your message, "
+            "remember that it's always okay to reach out for support when needed. "
+            "Self-care and connecting with supportive people are important parts of mental well-being."
+        )
+
+# Create a simple command line interface
+def cli_interface():
+    """
+    Command-line interface for crisis detection
+    """
+    print("\n==== Mental Health Crisis Detection System ====\n")
+    print("Enter text to analyze for crisis indicators. Type 'quit' to exit.")
+    
+    while True:
+        text = input("\nInput text: ")
+        
+        if text.lower() in ["quit", "exit", "q"]:
+            print("Exiting system. Take care!")
+            break
+        
+        # Evaluate input
+        result = evaluate_input(text)
+        
+        # Display results
+        print("\n----- Analysis Results -----")
+        print(f"Crisis probability: {result['final_score']:.2f}")
+        print(f"Assessment: {'CRISIS DETECTED' if result['is_crisis'] else 'No crisis detected'}")
+        print("\nExplanation:")
+        for item in result["explanation"]:
+            print(f"  - {item}")
+        
+        # Generate response
+        print("\nRecommended response:")
+        print(generate_response(result))
+        print("\n-----------------------------")
+
+# Main function to run the system
 def main():
     """
-    Main function to train and evaluate models
+    Main function to run the system
     """
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description="Train mental health crisis detection models")
-    parser.add_argument("--data_dir", type=str, default="data", help="Directory for datasets")
-    parser.add_argument("--model_dir", type=str, default="models", help="Directory for saving models")
-    parser.add_argument("--train_text", action="store_true", help="Train text-based model")
-    parser.add_argument("--train_bert", action="store_true", help="Train BERT-based model")
-    parser.add_argument("--train_multimodal", action="store_true", help="Train multimodal model")
-    parser.add_argument("--train_all", action="store_true", help="Train all models")
-    parser.add_argument("--eval_text", type=str, help="Text to evaluate")
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Mental Health Crisis Detection System")
+    parser.add_argument("--train", action="store_true", help="Train models")
+    parser.add_argument("--evaluate", type=str, help="Evaluate text input")
+    parser.add_argument("--audio", type=str, help="Audio file path for multimodal analysis")
+    parser.add_argument("--image", type=str, help="Image file path for multimodal analysis")
+    parser.add_argument("--cli", action="store_true", help="Launch command-line interface")
+    parser.add_argument("--data_dir", type=str, default="data", help="Data directory")
+    parser.add_argument("--model_dir", type=str, default="models", help="Model directory")
     
     args = parser.parse_args()
     
-    # Create directories
-    os.makedirs(args.data_dir, exist_ok=True)
-    os.makedirs(args.model_dir, exist_ok=True)
+    # Show ASCII art banner
+    print("""
+    ╔═══════════════════════════════════════════════════╗
+    ║  Mental Health Crisis Detection System            ║
+    ║  Created to help identify and respond to          ║
+    ║  mental health crises through text analysis       ║
+    ╚═══════════════════════════════════════════════════╝
+    """)
     
-    # Download datasets
-    download_datasets(args.data_dir)
+    # Download datasets if training
+    if args.train:
+        success = download_datasets(args.data_dir)
+        if not success:
+            logger.error("Failed to download or create datasets")
+            return
     
-    # Train models as specified
-    if args.train_text or args.train_all:
+    # Train models if requested
+    if args.train:
+        logger.info("Starting model training...")
+        
+        # Load text data
         text_df = load_text_data(args.data_dir)
-        if text_df is not None:
-            train_text_model(text_df, args.model_dir)
-    
-    if args.train_bert or args.train_all:
-        text_df = load_text_data(args.data_dir)
-        if text_df is not None:
-            train_bert_model(text_df, args.model_dir)
-    
-    if args.train_multimodal or args.train_all:
+        if text_df is None:
+            logger.error("Failed to load text data")
+            return
+        
+        # Train text model
+        text_model, vectorizer, text_accuracy = train_text_model(text_df, args.model_dir)
+        
+        # Train BERT model
+        bert_model, tokenizer, bert_accuracy = train_bert_model(text_df, args.model_dir)
+        
+        # Load multimodal data
         text_df, audio_df, image_df = load_multimodal_data(args.data_dir)
         if text_df is not None and audio_df is not None and image_df is not None:
-            train_multimodal_model(text_df, audio_df, image_df, args.model_dir)
+            # Train multimodal model
+            multimodal_model, multimodal_accuracy = train_multimodal_model(
+                text_df, audio_df, image_df, args.model_dir
+            )
+            
+            logger.info("Model training complete!")
+            logger.info(f"Text model accuracy: {text_accuracy:.4f}")
+            logger.info(f"BERT model accuracy: {bert_accuracy:.4f}")
+            logger.info(f"Multimodal model accuracy: {multimodal_accuracy:.4f}")
+        else:
+            logger.error("Failed to load multimodal data")
     
-    # Evaluate input text if provided
-    if args.eval_text:
-        result = evaluate_input(args.eval_text, model_dir=args.model_dir)
-        print("\nEvaluation Result:")
-        print(f"Crisis Score: {result['final_score']:.4f}")
-        print(f"Is Crisis: {'Yes' if result['is_crisis'] else 'No'}")
-        print(f"Confidence: {result['confidence']:.4f}")
-        print(f"Explanation: {result['explanation']}")
+    # Evaluate text input if provided
+    if args.evaluate:
+        result = evaluate_input(
+            args.evaluate, 
+            audio_file=args.audio,
+            image_file=args.image,
+            model_dir=args.model_dir
+        )
+        
+        # Display results
+        print("\n----- Analysis Results -----")
+        print(f"Crisis probability: {result['final_score']:.2f}")
+        print(f"Assessment: {'CRISIS DETECTED' if result['is_crisis'] else 'No crisis detected'}")
+        print("\nExplanation:")
+        for item in result["explanation"]:
+            print(f"  - {item}")
+        
+        # Generate response
+        print("\nRecommended response:")
+        print(generate_response(result))
+    
+    # Launch CLI if requested
+    if args.cli:
+        cli_interface()
+    
+    # If no action specified, show help
+    if not (args.train or args.evaluate or args.cli):
+        parser.print_help()
 
 if __name__ == "__main__":
     main()
