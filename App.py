@@ -284,8 +284,7 @@ def load_models():
     crisis_model = MultimodalCrisisDetector().to(DEVICE)
     
     # Inform about offline mode if active
-    if USE_OFFLINE_MODE:
-        st.info("⚠️ Running in offline mode with simulated models. For full functionality, set USE_OFFLINE_MODE to False and ensure internet connectivity.")
+    
     
     return text_tokenizer, text_model, image_processor, image_model, crisis_model
 
