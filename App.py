@@ -63,7 +63,7 @@ CRISIS_CATEGORIES = [
 RISK_LEVELS = ["Low", "Medium", "High", "Critical"]
 
 # Use offline mode flag
-USE_OFFLINE_MODE = True  # Set this to True to use dummy models instead of downloading
+USE_OFFLINE_MODE = False  # Set this to True to use dummy models instead of downloading
 
 def preprocess_text(text):
     text = re.sub(r'http\S+', '', text)  
