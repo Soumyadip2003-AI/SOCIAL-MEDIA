@@ -13,7 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score, precision_score, recall_score, f1_score, average_precision_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
@@ -1835,7 +1835,7 @@ def train_and_evaluate_text_model(data_dir, model_type='ensemble', use_bert=Fals
         val_labels = val_df['label'].values
     except FileNotFoundError:
         logger.warning("Text feature files not found, generating synthetic data...")
-        df = create_synthetic_text_features(data_dir)
+        df = create_synthetic_text_data(data_dir)
         val_df = pd.read_csv(f"{data_dir}/text_features_validation.csv")
         
         # Extract texts and labels
@@ -1909,7 +1909,7 @@ def train_and_evaluate_multimodal_model(data_dir, use_text=True, use_audio=False
                 val_labels = val_df['label'].values
         except FileNotFoundError:
             logger.warning("Text feature files not found, generating synthetic data...")
-            df = create_synthetic_text_features(data_dir)
+            df = create_synthetic_text_data(data_dir)
             val_df = pd.read_csv(f"{data_dir}/text_features_validation.csv")
             
             text_data = df['text'].tolist()
@@ -2036,7 +2036,7 @@ def main():
     # Generate synthetic data if requested
     if args.generate_data:
         logger.info("Generating synthetic data...")
-        create_synthetic_text_features(args.data_dir)
+        create_synthetic_text_data(args.data_dir)
         
         if args.use_audio:
             create_synthetic_audio_features(args.data_dir)
