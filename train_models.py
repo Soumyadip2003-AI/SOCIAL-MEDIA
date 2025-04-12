@@ -16,6 +16,7 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
 import os
 import requests
 import zipfile
@@ -157,7 +158,6 @@ except ImportError:
     gensim_available = False
 
 warnings.filterwarnings('ignore')
-
 # Download necessary NLTK resources
 nltk.download('punkt', quiet=True)
 nltk.download('stopwords', quiet=True)
@@ -718,8 +718,8 @@ def create_synthetic_audio_features(target_dir):
                 size=n_mfcc
             )
             
-            sample_features.extend(frame_features)
-        
+        sample_features.extend(frame_features)
+            
         val_features.append(sample_features)
     
     # Generate non-crisis audio features for validation
@@ -734,7 +734,7 @@ def create_synthetic_audio_features(target_dir):
                 size=n_mfcc
             )
             
-           sample_features.extend(frame_features)
+        sample_features.extend(frame_features)
         
         val_features.append(sample_features)
     
@@ -1558,8 +1558,8 @@ class MultimodalCrisisDetector:
         
         if self.use_image and image_data is not None:
            image_features = self.image_scaler.transform(image_data)
-            image_probs = self.image_model.predict_proba(image_features)
-            meta_features.append(image_probs)
+        image_probs = self.image_model.predict_proba(image_features)
+        meta_features.append(image_probs)
         
         if not meta_features:
             logger.error("No features available for prediction")
