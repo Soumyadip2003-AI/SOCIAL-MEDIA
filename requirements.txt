@@ -18,3 +18,4 @@ lightgbm>=3.3.0
 requests
 argparse
 opencv-python-headless==4.5.5.64
+tensorflow>=2.10.0
