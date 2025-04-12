@@ -17,5 +17,5 @@ xgboost>=1.6.0
 lightgbm>=3.3.0
 requests
 argparse
-opencv-python-headless==4.5.5.64
+opencv-python-headless
 tensorflow>=2.10.0
