@@ -19,3 +19,4 @@ requests
 argparse
 opencv-python-headless
 tensorflow>=2.10.0
+lime
