@@ -9,7 +9,6 @@ nltk>=3.6.0
 joblib>=1.1.0
 tqdm>=4.62.0
 shap>=0.40.0
-opencv-python
 pillow>=9.0.0
 spacy>=3.5.0  
 gensim>=4.2.0
