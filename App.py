@@ -10,7 +10,7 @@ from nltk.corpus import stopwords
 import shap
 import torch
 from transformers import BertTokenizer, BertForSequenceClassification
-import cv2
+import cv
 from PIL import Image
 import io
 import requests
