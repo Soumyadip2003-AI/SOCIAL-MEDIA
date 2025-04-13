@@ -43,23 +43,7 @@ def install_required_packages():
     Install required packages if not already installed
     """
     required_packages = {
-        'transformers': 'transformers>=4.28.0',
-        'torch': 'torch>=1.13.0',
-        'numpy': 'numpy>=1.20.0',
-        'pandas': 'pandas>=1.4.0',
-        'matplotlib': 'matplotlib>=3.5.0',
-        'seaborn': 'seaborn>=0.11.0',
-        'scikit-learn': 'scikit-learn>=1.0.0',
-        'nltk': 'nltk>=3.6.0',
-        'joblib': 'joblib>=1.1.0',
-        'tqdm': 'tqdm>=4.62.0',
-        'shap': 'shap>=0.40.0',
-        'opencv-python': 'opencv-python>=4.5.0',
-        'pillow': 'pillow>=9.0.0',
-        'spacy': 'spacy>=3.5.0',
-        'gensim': 'gensim>=4.2.0',
-        'xgboost': 'xgboost>=1.6.0',
-        'lightgbm': 'lightgbm>=3.3.0',
+        
     }
     
     packages_to_install = []
