@@ -18,6 +18,10 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 import os
+os.environ["TRANSFORMERS_FRAMEWORK"] = "pt"  # Force PyTorch backend
+
+# Then import transformers
+from transformers import BertTokenizer, BertModel, BertForSequenceClassification, AdamW
 import requests
 import zipfile
 from tqdm import tqdm
