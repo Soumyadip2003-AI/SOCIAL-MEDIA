@@ -434,7 +434,7 @@ def main():
         })
         
         fig, ax = plt.subplots(figsize=(10, 5))
-        sns.barplot(x="Importance", y="Word", data=keywords, palette="Reds_r")
+        sns.barplot(x="Importance", y="Word", hue="Word", data=keywords, palette="Reds_r", legend=False)
         plt.title("Top Keywords Associated with Crisis")
         st.pyplot(fig)
         
