@@ -76,23 +76,30 @@ try:
     from transformers import BertTokenizer, BertModel, BertForSequenceClassification, AdamW
     from transformers import RobertaTokenizer, RobertaModel, RobertaForSequenceClassification
     from transformers import DistilBertTokenizer, DistilBertModel, DistilBertForSequenceClassification
-    # Try to load the BERT tokenizer with detailed error handling
-    try:
-        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        bert_available = True
-        logger.info("Successfully loaded BERT tokenizer.")
-    except Exception as e:
-        logger.error(f"Error loading BERT tokenizer: {e}")
+    logger.info("Successfully imported transformer models")
+except ImportError:
+    logger.error("Could not import transformers library. Some features will be limited.")
+    bert_available = False
+    # Initialize models dictionary
+models = {}
+
+# Try to load the BERT tokenizer with detailed error handling
+try:
+    models["tokenizer"] = BertTokenizer.from_pretrained("bert-base-uncased", local_files_only=False)
+except Exception as e:
+    logger.warning(f"Could not load BERT tokenizer: {e}. Some features may be limited.")
+    # Create a simple fallback tokenizer
+    models["tokenizer"] = None
         
-        # Try with offline mode if the first attempt failed
-        try:
-            logger.info("Attempting to download BERT tokenizer...")
-            tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', local_files_only=False)
-            bert_available = True
-            logger.info("Successfully downloaded and loaded BERT tokenizer.")
-        except Exception as e2:
-            logger.error(f"Second attempt failed: {e2}")
-            bert_available = False
+# Try with offline mode if the first attempt failed
+try:
+    logger.info("Attempting to download BERT tokenizer...")
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', local_files_only=False)
+    bert_available = True
+    logger.info("Successfully downloaded and loaded BERT tokenizer.")
+except Exception as e2:
+    logger.error(f"Second attempt failed: {e2}")
+    bert_available = False
 except ImportError:
     logger.error("Could not import transformers library. Please install it manually.")
     bert_available = False
