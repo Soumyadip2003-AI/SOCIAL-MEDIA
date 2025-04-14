@@ -143,7 +143,7 @@ def load_models():
     try:
         models["tokenizer"] = BertTokenizer.from_pretrained("bert-base-uncased")
     except:
-        st.warning("Could not load BERT tokenizer. Some features may be limited.")
+        
     
     return models
 
